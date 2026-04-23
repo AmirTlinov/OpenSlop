@@ -23,7 +23,7 @@ public enum CoreDaemonClientError: LocalizedError {
         case .emptyResponse:
             return "core-daemon вернул пустой ответ."
         case .decodeFailed(let message):
-            return "Не удалось декодировать session projection: \(message)"
+            return "Не удалось декодировать ответ core-daemon: \(message)"
         case .invalidResponse(let message):
             return "core-daemon вернул неожиданный ответ: \(message)"
         case .requestEncodingFailed(let message):
@@ -37,6 +37,10 @@ public struct CoreDaemonClient: Sendable {
 
     public func fetchSessionProjection() async throws -> DaemonSessionProjection {
         try await SharedCoreDaemonTransport.instance.fetchSessionProjection()
+    }
+
+    public func startCodexSession() async throws -> DaemonCodexSessionBootstrap {
+        try await SharedCoreDaemonTransport.instance.startCodexSession()
     }
 
     public func daemonProcessIdentifier() async throws -> Int32 {
@@ -57,18 +61,12 @@ private actor CoreDaemonTransport {
 
     func fetchSessionProjection() throws -> DaemonSessionProjection {
         try ensureRunning()
-        try send(request: CoreDaemonRequest(query: "session-list"))
-        let payload = try readResponseLine()
+        return try send(operation: "session-list", expecting: DaemonSessionProjection.self)
+    }
 
-        if let projection = try? JSONDecoder().decode(DaemonSessionProjection.self, from: payload) {
-            return projection
-        }
-
-        if let errorResponse = try? JSONDecoder().decode(CoreDaemonErrorResponse.self, from: payload) {
-            throw CoreDaemonClientError.invalidResponse(errorResponse.message)
-        }
-
-        throw CoreDaemonClientError.decodeFailed(String(decoding: payload, as: UTF8.self))
+    func startCodexSession() throws -> DaemonCodexSessionBootstrap {
+        try ensureRunning()
+        return try send(operation: "codex-start-session", expecting: DaemonCodexSessionBootstrap.self)
     }
 
     func daemonProcessIdentifier() throws -> Int32 {
@@ -115,7 +113,7 @@ private actor CoreDaemonTransport {
         self.stdoutBuffer.removeAll(keepingCapacity: true)
     }
 
-    private func send(request: CoreDaemonRequest) throws {
+    private func send<Response: Decodable>(operation: String, expecting type: Response.Type) throws -> Response {
         guard let stdinHandle else {
             throw CoreDaemonClientError.processLaunchFailed("stdin unavailable")
         }
@@ -123,7 +121,7 @@ private actor CoreDaemonTransport {
         let encoder = JSONEncoder()
         let payload: Data
         do {
-            payload = try encoder.encode(request)
+            payload = try encoder.encode(CoreDaemonRequest(operation: operation))
         } catch {
             throw CoreDaemonClientError.requestEncodingFailed(error.localizedDescription)
         }
@@ -136,6 +134,18 @@ private actor CoreDaemonTransport {
         } catch {
             throw CoreDaemonClientError.processLaunchFailed(error.localizedDescription)
         }
+
+        let response = try readResponseLine()
+
+        if let decoded = try? JSONDecoder().decode(Response.self, from: response) {
+            return decoded
+        }
+
+        if let errorResponse = try? JSONDecoder().decode(CoreDaemonErrorResponse.self, from: response) {
+            throw CoreDaemonClientError.invalidResponse(errorResponse.message)
+        }
+
+        throw CoreDaemonClientError.decodeFailed(String(decoding: response, as: UTF8.self))
     }
 
     private func readResponseLine() throws -> Data {

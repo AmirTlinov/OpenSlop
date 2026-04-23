@@ -21,16 +21,38 @@ private enum SessionProjectionLoadState {
     }
 }
 
+private enum CodexBootstrapState {
+    case idle
+    case running
+    case completed(summary: String)
+    case failed(message: String)
+
+    var summary: String {
+        switch self {
+        case .idle:
+            return "Codex thread ещё не запускали из GUI."
+        case .running:
+            return "core-daemon поднимает codex app-server и стартует real thread."
+        case .completed(let summary):
+            return summary
+        case .failed(let message):
+            return message
+        }
+    }
+}
+
 struct WorkbenchRootView: View {
     private let seed = WorkbenchSeed.bootstrap
     private let client = CoreDaemonClient()
 
     @State private var sessions: [DaemonSessionSummary] = []
     @State private var selectedSessionID: DaemonSessionSummary.ID?
-    @State private var promptText = "Поднять long-lived stdio IPC path"
+    @State private var promptText = "Materialize first real Codex thread"
     @State private var selectedProvider = "Codex"
     @State private var selectedEffort = "High"
     @State private var loadState: SessionProjectionLoadState = .idle
+    @State private var codexBootstrapState: CodexBootstrapState = .idle
+    @State private var lastBootstrap: DaemonCodexSessionBootstrap?
 
     private var selectedSession: DaemonSessionSummary? {
         sessions.first(where: { $0.id == selectedSessionID }) ?? sessions.first
@@ -58,7 +80,8 @@ struct WorkbenchRootView: View {
                         loadSummary: loadState.summary,
                         timeline: seed.timeline(
                             for: selectedSession,
-                            loadSummary: loadState.summary
+                            loadSummary: loadState.summary,
+                            bootstrapSummary: codexBootstrapState.summary
                         )
                     )
                     .frame(minWidth: 720)
@@ -67,7 +90,8 @@ struct WorkbenchRootView: View {
                         cards: seed.inspectorCards(
                             projectionKind: projectionKind,
                             sessionsCount: sessions.count,
-                            selectedSession: selectedSession
+                            selectedSession: selectedSession,
+                            lastBootstrap: lastBootstrap
                         )
                     )
                     .frame(minWidth: 280, idealWidth: 320, maxWidth: 360)
@@ -91,20 +115,22 @@ struct WorkbenchRootView: View {
                     .frame(width: 180)
 
                     Button("Обновить") {
-                        Task { await loadSessions(force: true) }
+                        Task { await loadSessions(force: true, preferredSessionID: nil) }
                     }
-                    Button("Запустить") { }
+                    Button("Запустить") {
+                        Task { await startCodexSession() }
+                    }
                 }
             }
         }
         .navigationSplitViewStyle(.balanced)
         .task {
-            await loadSessions(force: false)
+            await loadSessions(force: false, preferredSessionID: nil)
         }
     }
 
     @MainActor
-    private func loadSessions(force: Bool) async {
+    private func loadSessions(force: Bool, preferredSessionID: String?) async {
         if !force, case .loaded = loadState {
             return
         }
@@ -115,12 +141,28 @@ struct WorkbenchRootView: View {
             let projection = try await client.fetchSessionProjection()
             let daemonPID = try await client.daemonProcessIdentifier()
             sessions = projection.sessions
-            selectedSessionID = selectedSessionID ?? projection.sessions.first?.id
+            selectedSessionID = preferredSessionID ?? selectedSessionID ?? projection.sessions.first?.id
             loadState = .loaded(kind: projection.kind, transport: "stdio pid=\(daemonPID)")
         } catch {
             sessions = []
             selectedSessionID = nil
             loadState = .failed(message: error.localizedDescription)
+        }
+    }
+
+    @MainActor
+    private func startCodexSession() async {
+        codexBootstrapState = .running
+
+        do {
+            let bootstrap = try await client.startCodexSession()
+            lastBootstrap = bootstrap
+            codexBootstrapState = .completed(
+                summary: "Codex thread \(bootstrap.providerThreadId) materialized через \(bootstrap.transport), model=\(bootstrap.model), cli=\(bootstrap.cliVersion)."
+            )
+            await loadSessions(force: true, preferredSessionID: bootstrap.session.id)
+        } catch {
+            codexBootstrapState = .failed(message: error.localizedDescription)
         }
     }
 }

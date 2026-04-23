@@ -10,7 +10,7 @@
 | `S00-repo-constitution` | Конституция репозитория, карты, buildable seeds | — | in progress |
 | `S01-workbench-shell` | Первое настоящее окно workbench | S00 | planned |
 | `S02-event-spine` | Canonical event log, IPC, projections | S00 | done |
-| `S03-codex-runtime` | Полный Codex path через app-server | S02 | planned |
+| `S03-codex-runtime` | Live Codex bootstrap lane через app-server | S02 | done |
 | `S04-transcript-approval-pty` | Нативный transcript, approvals, PTY | S03 | planned |
 | `S05-claude-runtime` | Claude runtime через bridge | S02 | planned |
 | `S06-git-review-artifacts` | Diff, artifacts, worktrees | S02 | planned |

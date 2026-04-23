@@ -29,7 +29,7 @@ public struct DaemonSessionSummary: Codable, Equatable, Hashable, Identifiable, 
 }
 
 struct CoreDaemonRequest: Codable, Sendable {
-    let query: String
+    let operation: String
 }
 
 struct CoreDaemonErrorResponse: Codable, Sendable {

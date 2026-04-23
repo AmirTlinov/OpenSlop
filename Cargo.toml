@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "domains/session/rust/session-domain",
+    "domains/provider/rust/provider-domain",
     "services/core-daemon",
 ]
 resolver = "2"

@@ -10,6 +10,7 @@ let package = Package(
         .library(name: "WorkbenchCore", targets: ["WorkbenchCore"]),
         .executable(name: "OpenSlopApp", targets: ["OpenSlopApp"]),
         .executable(name: "OpenSlopProbe", targets: ["OpenSlopProbe"]),
+        .executable(name: "OpenSlopCodexProbe", targets: ["OpenSlopCodexProbe"]),
     ],
     targets: [
         .target(
@@ -25,6 +26,11 @@ let package = Package(
             name: "OpenSlopProbe",
             dependencies: ["WorkbenchCore"],
             path: "Sources/OpenSlopProbe"
+        ),
+        .executableTarget(
+            name: "OpenSlopCodexProbe",
+            dependencies: ["WorkbenchCore"],
+            path: "Sources/OpenSlopCodexProbe"
         ),
     ]
 )

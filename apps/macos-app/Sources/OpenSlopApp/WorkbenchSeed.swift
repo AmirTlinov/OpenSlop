@@ -26,7 +26,8 @@ struct WorkbenchSeed {
 
     func timeline(
         for session: DaemonSessionSummary?,
-        loadSummary: String
+        loadSummary: String,
+        bootstrapSummary: String
     ) -> [TimelineItemSeed] {
         [
             TimelineItemSeed(
@@ -38,14 +39,14 @@ struct WorkbenchSeed {
             TimelineItemSeed(
                 id: UUID(),
                 kind: .tool,
-                title: "core-daemon --query session-list",
-                detail: "Sidebar и header больше не зависят от hardcoded списка."
+                title: "core-daemon -> codex app-server -> thread/start",
+                detail: bootstrapSummary
             ),
             TimelineItemSeed(
                 id: UUID(),
                 kind: .verify,
-                title: "S02 first proof target",
-                detail: session.map { "Выбрана реальная session: \($0.title) [\($0.provider)]" } ?? "Ожидаем или не можем получить session list."
+                title: "S03 first proof target",
+                detail: session.map { "Выбрана materialized session: \($0.title) [\($0.provider)]" } ?? "Ожидаем или не можем получить session list."
             ),
         ]
     }
@@ -53,13 +54,17 @@ struct WorkbenchSeed {
     func inspectorCards(
         projectionKind: String,
         sessionsCount: Int,
-        selectedSession: DaemonSessionSummary?
+        selectedSession: DaemonSessionSummary?,
+        lastBootstrap: DaemonCodexSessionBootstrap?
     ) -> [InspectorCardSeed] {
         [
             InspectorCardSeed(id: UUID(), title: "Projection", value: projectionKind),
             InspectorCardSeed(id: UUID(), title: "Sessions", value: "\(sessionsCount)"),
             InspectorCardSeed(id: UUID(), title: "Provider", value: selectedSession?.provider ?? "—"),
             InspectorCardSeed(id: UUID(), title: "Branch", value: selectedSession?.branch ?? "—"),
+            InspectorCardSeed(id: UUID(), title: "Codex model", value: lastBootstrap?.model ?? "ещё не запускали"),
+            InspectorCardSeed(id: UUID(), title: "Thread", value: lastBootstrap?.providerThreadId ?? "—"),
+            InspectorCardSeed(id: UUID(), title: "CLI", value: lastBootstrap?.cliVersion ?? "—"),
         ]
     }
 }

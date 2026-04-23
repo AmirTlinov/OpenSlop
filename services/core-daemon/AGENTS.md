@@ -1,5 +1,7 @@
 # core-daemon
 
-`core-daemon` — будущий источник истины: event spine, projections, provider lifecycle, IPC, artifact registry и orchestration.
+`core-daemon` — источник истины для OpenSlop: session projections, provider lifecycle, IPC и дальше event spine.
 
-Сейчас materialized только минимальный heartbeat seed. Реальный рост начинается со слайса `S02-event-spine`.
+Сейчас materialized:
+- `session_list` projection и persisted store из S02;
+- первый live Codex bootstrap lane из S03: `initialize -> thread/start -> session_list materialization`.

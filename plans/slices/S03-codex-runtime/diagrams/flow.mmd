@@ -1,6 +1,10 @@
 flowchart LR
-    User["User intent"] --> Slice["S03-codex-runtime"]
-    Slice --> N1["domains/provider"]
-    Slice --> N2["domains/session"]
-    Slice --> N3["domains/approval"]
-    Slice --> N4["services/core-daemon"]
+    User["User taps Запустить"] --> App["OpenSlop.app"]
+    App --> Daemon["core-daemon stdio client"]
+    Daemon --> Provider["provider-domain"]
+    Provider --> Codex["codex app-server\ninitialize -> thread/start"]
+    Codex --> Provider
+    Provider --> Daemon
+    Daemon --> Store["session-domain store\nupsert_runtime_session"]
+    Store --> Projection["session_list projection"]
+    Projection --> App

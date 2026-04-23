@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::fs;
@@ -64,7 +64,9 @@ pub fn bootstrap_session_projection() -> SessionListProjection {
     }
 }
 
-pub fn load_persisted_session_projection(repo_root: &Path) -> Result<SessionListProjection, SessionStoreError> {
+pub fn load_persisted_session_projection(
+    repo_root: &Path,
+) -> Result<SessionListProjection, SessionStoreError> {
     let mut connection = open_store(repo_root)?;
     seed_bootstrap_if_empty(&mut connection)?;
 
@@ -109,6 +111,17 @@ pub fn upsert_proof_session(repo_root: &Path) -> Result<(), SessionStoreError> {
     };
 
     upsert_session(&connection, &proof, 90)?;
+    Ok(())
+}
+
+pub fn upsert_runtime_session(
+    repo_root: &Path,
+    session: &SessionSummary,
+) -> Result<(), SessionStoreError> {
+    let mut connection = open_store(repo_root)?;
+    seed_bootstrap_if_empty(&mut connection)?;
+    let sort_order = next_sort_order(&connection)?;
+    upsert_session(&connection, session, sort_order)?;
     Ok(())
 }
 
@@ -169,7 +182,20 @@ fn seed_bootstrap_if_empty(connection: &mut Connection) -> Result<(), SessionSto
     Ok(())
 }
 
-fn upsert_session(connection: &Connection, session: &SessionSummary, sort_order: i64) -> Result<(), SessionStoreError> {
+fn next_sort_order(connection: &Connection) -> Result<i64, SessionStoreError> {
+    let next = connection.query_row(
+        "SELECT COALESCE(MAX(sort_order), 0) + 10 FROM sessions",
+        [],
+        |row| row.get(0),
+    )?;
+    Ok(next)
+}
+
+fn upsert_session(
+    connection: &Connection,
+    session: &SessionSummary,
+    sort_order: i64,
+) -> Result<(), SessionStoreError> {
     connection.execute(
         r#"
         INSERT INTO sessions (id, sort_order, title, workspace, branch, provider, status)
@@ -235,7 +261,12 @@ mod tests {
 
         assert_eq!(projection.kind, PROJECTION_KIND);
         assert!(projection.sessions.len() >= 3);
-        assert!(projection.sessions.iter().any(|session| session.id == "s02-event-spine"));
+        assert!(
+            projection
+                .sessions
+                .iter()
+                .any(|session| session.id == "s02-event-spine")
+        );
     }
 
     #[test]
@@ -251,26 +282,51 @@ mod tests {
     fn persisted_projection_seeds_and_rehydrates() {
         let temp = tempdir().expect("temp dir should exist");
 
-        let seeded = load_persisted_session_projection(temp.path()).expect("projection should load");
+        let seeded =
+            load_persisted_session_projection(temp.path()).expect("projection should load");
         assert_eq!(seeded.kind, PROJECTION_KIND);
         assert_eq!(seeded.sessions.len(), 3);
         assert!(session_store_path(temp.path()).exists());
 
         upsert_proof_session(temp.path()).expect("proof session should persist");
-        let rehydrated = load_persisted_session_projection(temp.path()).expect("projection should rehydrate");
+        let rehydrated =
+            load_persisted_session_projection(temp.path()).expect("projection should rehydrate");
 
-        assert!(rehydrated.sessions.iter().any(|session| session.id == proof_session_id()));
+        assert_eq!(rehydrated.kind, PROJECTION_KIND);
         assert_eq!(rehydrated.sessions.len(), 4);
+        assert!(
+            rehydrated
+                .sessions
+                .iter()
+                .any(|session| session.id == PROOF_SESSION_ID)
+        );
     }
 
     #[test]
-    fn reset_clears_store() {
+    fn runtime_session_is_materialized_in_projection() {
         let temp = tempdir().expect("temp dir should exist");
-        upsert_proof_session(temp.path()).expect("proof session should persist");
-        reset_session_store(temp.path()).expect("store should reset");
+        let runtime = SessionSummary {
+            id: "codex-thread-001".to_string(),
+            title: "Codex thread codex-th".to_string(),
+            workspace: "OpenSlop".to_string(),
+            branch: "main".to_string(),
+            provider: "Codex".to_string(),
+            status: "idle".to_string(),
+        };
 
-        let projection = load_persisted_session_projection(temp.path()).expect("projection should reseed");
-        assert_eq!(projection.sessions.len(), 3);
-        assert!(!projection.sessions.iter().any(|session| session.id == proof_session_id()));
+        upsert_runtime_session(temp.path(), &runtime).expect("runtime session should persist");
+        let projection =
+            load_persisted_session_projection(temp.path()).expect("projection should load");
+
+        assert!(
+            projection
+                .sessions
+                .iter()
+                .any(|session| session.id == runtime.id)
+        );
+        assert_eq!(
+            projection.sessions.last().expect("session should exist").id,
+            runtime.id
+        );
     }
 }
