@@ -14,6 +14,7 @@
 - fail-closed `claude-runtime-status` operation из S05a.
 - real non-persistent `claude-turn-proof` operation из S05b.
 - read-only `claude-materialize-proof-session` operation из S05c.
+- bounded custom Claude receipt prompt validation из S05d.
 
 Текущая карта ответственности:
 - stdio transport между GUI и daemon;
@@ -30,5 +31,6 @@
 - честные error responses, когда session пережила restart раньше первого completed turn;
 - daemon-owned Git snapshot для Inspector: Swift не вызывает `git` сам, а только показывает typed response;
 - daemon-owned Claude runtime status: Swift не вызывает `claude` сам и не открывает Claude turn path без bridge proof.
-- daemon-owned Claude turn proof: Swift получает typed receipt через `claude-turn-proof`, но GUI chat/session lifecycle остаются закрыты.
-- daemon-owned Claude receipt materialization: успешный proof upsert'ится в `session_list` как read-only Claude session, но submit/resume/approval/tools не открываются.
+- daemon-owned Claude turn proof: Swift получает typed receipt через `claude-turn-proof`, но GUI dialog/session lifecycle остаются закрыты.
+- daemon-owned Claude receipt materialization: successful proof upsert'ится в `session_list` как read-only Claude session, но submit/resume/approval/tools не открываются.
+- daemon-owned Claude prompt policy: empty и >512 bytes prompt отклоняются до запуска `claude-bridge`.

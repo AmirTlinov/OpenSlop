@@ -8,6 +8,7 @@ struct TimelinePanelView: View {
     let timeline: [TimelineItemSeed]
     let emptyState: WorkbenchTimelineEmptyState?
     @Binding var promptText: String
+    @Binding var claudeReceiptPromptText: String
     let selectedProvider: String
     let selectedEffort: String
     let claudeRuntimeStatus: DaemonClaudeRuntimeStatus?
@@ -24,6 +25,7 @@ struct TimelinePanelView: View {
                 WorkbenchStartSurfaceView(
                     emptyState: emptyState,
                     promptText: $promptText,
+                    claudeReceiptPromptText: $claudeReceiptPromptText,
                     selectedProvider: selectedProvider,
                     selectedEffort: selectedEffort,
                     claudeRuntimeStatus: claudeRuntimeStatus,

@@ -80,6 +80,7 @@ struct WorkbenchRootView: View {
     @State private var sessions: [DaemonSessionSummary] = []
     @State private var shellState: WorkbenchShellState
     @State private var promptText = ""
+    @State private var claudeReceiptPromptText = DaemonClaudeReceiptPromptPolicy.defaultPrompt
     @State private var loadState: SessionProjectionLoadState = .idle
     @State private var codexBootstrapState: CodexBootstrapState = .idle
     @State private var transcriptState: TranscriptState = .idle
@@ -138,7 +139,9 @@ struct WorkbenchRootView: View {
         case "Codex":
             return canStartCodexSession
         case "Claude":
-            return claudeRuntimeStatus?.available == true && !isClaudeProofRunning
+            return claudeRuntimeStatus?.available == true
+                && !isClaudeProofRunning
+                && claudeReceiptPromptValidationMessage == nil
         default:
             return false
         }
@@ -149,6 +152,15 @@ struct WorkbenchRootView: View {
             return kind
         }
         return "session_list.pending"
+    }
+
+
+    private var trimmedClaudeReceiptPrompt: String {
+        DaemonClaudeReceiptPromptPolicy.trimmed(claudeReceiptPromptText)
+    }
+
+    private var claudeReceiptPromptValidationMessage: String? {
+        DaemonClaudeReceiptPromptPolicy.validationMessage(for: claudeReceiptPromptText)
     }
 
     private var canSubmitTurn: Bool {
@@ -276,6 +288,7 @@ struct WorkbenchRootView: View {
                         ),
                         emptyState: currentTimelineEmptyState,
                         promptText: $promptText,
+                        claudeReceiptPromptText: $claudeReceiptPromptText,
                         selectedProvider: shellState.selectedProvider,
                         selectedEffort: shellState.selectedEffort,
                         claudeRuntimeStatus: claudeRuntimeStatus,
@@ -591,16 +604,22 @@ struct WorkbenchRootView: View {
             return
         }
 
+        if let validationMessage = claudeReceiptPromptValidationMessage {
+            transcriptState = .unavailable(message: validationMessage)
+            return
+        }
+
+        let receiptPrompt = trimmedClaudeReceiptPrompt
         isClaudeProofRunning = true
         transcriptState = .streaming(summary: "Запускаем real Claude receipt proof через core-daemon.")
 
         do {
-            let materialized = try await client.materializeClaudeProofSession()
+            let materialized = try await client.materializeClaudeProofSession(inputText: receiptPrompt)
             isClaudeProofRunning = false
             transcript = nil
             pendingApproval = nil
             transcriptState = materialized.proof.success
-                ? .loaded(summary: "Claude receipt session materialized: \(materialized.proof.resultText). Chat lifecycle still closed.")
+                ? .loaded(summary: "Claude receipt session materialized: \(materialized.proof.resultText). Диалоговый режим остаётся закрыт.")
                 : .failed(message: "Claude receipt failed closed: \(materialized.proof.warnings.joined(separator: "; "))")
             await loadSessions(force: true, preferredSessionID: materialized.session.id)
         } catch {
@@ -620,7 +639,7 @@ struct WorkbenchRootView: View {
         guard looksLikeLiveCodexThread(selectedSession.id) else {
             transcript = nil
             if selectedSession.provider == "Claude" {
-                transcriptState = .unavailable(message: "Claude receipt session read-only. Chat lifecycle, resume и approvals ещё закрыты.")
+                transcriptState = .unavailable(message: "Claude receipt session read-only. Диалоговый режим, resume и approvals ещё закрыты.")
                 return
             }
             transcriptState = .unavailable(message: "Эта session seeded. Нажми Запустить, чтобы создать живую Codex session.")
@@ -932,7 +951,7 @@ struct WorkbenchRootView: View {
             if isClaudeProofRunning {
                 return "Claude receipt proof уже выполняется."
             }
-            return "Claude может создать только read-only receipt session. Chat lifecycle ещё закрыт."
+            return "Claude может создать только read-only receipt session. Диалоговый режим ещё закрыт."
         }
 
         if isCodexBootstrapRunning {
@@ -944,7 +963,7 @@ struct WorkbenchRootView: View {
 
     private func turnSubmitBlockedMessage(for selectedSession: DaemonSessionSummary) -> String {
         if shellState.selectedProvider == "Claude" {
-            return "Claude runtime найден как status/proof boundary. Claude chat закрыт до session lifecycle slice."
+            return "Claude runtime найден как status/proof boundary. Диалоговый режим закрыт до session lifecycle slice."
         }
 
         if isTurnStreaming {

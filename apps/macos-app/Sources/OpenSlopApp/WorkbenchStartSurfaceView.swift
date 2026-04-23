@@ -4,6 +4,7 @@ import WorkbenchCore
 struct WorkbenchStartSurfaceView: View {
     let emptyState: WorkbenchTimelineEmptyState
     @Binding var promptText: String
+    @Binding var claudeReceiptPromptText: String
     let selectedProvider: String
     let selectedEffort: String
     let claudeRuntimeStatus: DaemonClaudeRuntimeStatus?
@@ -158,19 +159,54 @@ struct WorkbenchStartSurfaceView: View {
     }
 
     private var claudeReceiptSurface: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Label("Claude receipt session", systemImage: "checkmark.seal")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Label("Claude receipt prompt", systemImage: "checkmark.seal")
+                    .font(.headline)
+                Spacer(minLength: 0)
+                Text("\(claudeReceiptPromptBytes)/\(DaemonClaudeReceiptPromptPolicy.maxBytes) bytes")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(claudeReceiptPromptValidationMessage == nil ? Color.secondary : Color.orange)
+            }
 
-            Text("Этот режим запускает один bounded Claude proof через core-daemon и сохраняет только read-only receipt в списке сессий.")
+            Text("Один короткий proof-запрос уходит в core-daemon. OpenSlop сохраняет только read-only receipt в списке сессий.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 8) {
+                TextEditor(text: $claudeReceiptPromptText)
+                    .font(.body.monospaced())
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 86, maxHeight: 130)
+                    .padding(10)
+                    .background(.background.opacity(0.55), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(alignment: .topLeading) {
+                        if DaemonClaudeReceiptPromptPolicy.trimmed(claudeReceiptPromptText).isEmpty {
+                            Text("Текст одного Claude receipt proof…")
+                                .font(.body.monospaced())
+                                .foregroundStyle(.tertiary)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 18)
+                                .allowsHitTesting(false)
+                        }
+                    }
+
+                if let claudeReceiptPromptValidationMessage {
+                    Label(claudeReceiptPromptValidationMessage, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                } else {
+                    Label("один bounded receipt · история, resume, approvals, tools и tracing закрыты", systemImage: "lock")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             HStack(spacing: 12) {
                 Label(workspaceTitle, systemImage: "folder")
                 Label(branchTitle, systemImage: "point.3.connected.trianglepath.dotted")
                 Spacer(minLength: 0)
-                Label("chat закрыт", systemImage: "lock")
+                Label("диалоговый режим закрыт", systemImage: "lock")
             }
             .font(.caption.weight(.medium))
             .foregroundStyle(.secondary)
@@ -183,6 +219,17 @@ struct WorkbenchStartSurfaceView: View {
                 .stroke(.separator.opacity(0.35), lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.06), radius: 22, y: 10)
+    }
+
+
+    private var claudeReceiptPromptBytes: Int {
+        DaemonClaudeReceiptPromptPolicy.byteCount(
+            DaemonClaudeReceiptPromptPolicy.trimmed(claudeReceiptPromptText)
+        )
+    }
+
+    private var claudeReceiptPromptValidationMessage: String? {
+        DaemonClaudeReceiptPromptPolicy.validationMessage(for: claudeReceiptPromptText)
     }
 
     private var startSessionButtonTitle: String {
@@ -201,7 +248,7 @@ struct WorkbenchStartSurfaceView: View {
 
     private var surfaceRecoveryHint: String {
         selectedProvider == "Claude"
-            ? "Это не чат и не первый запрос. Resume, approvals, tools и tracing пока закрыты."
+            ? "Это один receipt proof. Resume, approvals, tools, tracing и диалоговый режим пока закрыты."
             : emptyState.recoveryHint
     }
 
@@ -219,7 +266,7 @@ struct WorkbenchStartSurfaceView: View {
         }
 
         if claudeRuntimeStatus.available {
-            return "\(claudeRuntimeStatus.versionLabel) найден. S05c создаёт read-only receipt session; Claude chat ещё закрыт."
+            return "\(claudeRuntimeStatus.versionLabel) найден. S05d создаёт read-only receipt по bounded prompt; диалоговый режим закрыт."
         }
 
         return "Claude runtime недоступен. GUI держит этот provider fail-closed."

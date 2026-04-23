@@ -74,8 +74,8 @@ struct WorkbenchSeed {
                     kind: .verify,
                     title: session.status == "receipt_proven" ? "Claude receipt proven" : "Claude receipt failed",
                     detail: session.status == "receipt_proven"
-                        ? "Один bounded Claude turn был выполнен через bridge -> core-daemon -> session_list. Это read-only receipt, не Claude chat."
-                        : "Claude receipt path завершился fail-closed. Chat lifecycle остаётся закрыт.",
+                        ? "Один bounded Claude turn был выполнен через bridge -> core-daemon -> session_list. Это read-only receipt."
+                        : "Claude receipt path завершился fail-closed. Диалоговый режим остаётся закрыт.",
                     secondaryDetail: "\(session.workspace) · \(session.branch) · \(session.status)",
                     prefersMonospacedDetail: false
                 ),

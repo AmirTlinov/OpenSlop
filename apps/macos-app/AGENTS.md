@@ -23,6 +23,7 @@ macos-app
    │  ├─ ClaudeRuntimeStatus.swift
    │  ├─ ClaudeTurnProofResult.swift
    │  ├─ ClaudeProofSessionMaterialization.swift
+   │  ├─ ClaudeReceiptPromptPolicy.swift
    │  ├─ RepoRootLocator.swift
    │  └─ CoreDaemonClient.swift
    ├─ OpenSlopApp/
@@ -81,7 +82,9 @@ macos-app
    │  └─ main.swift
    ├─ OpenSlopClaudeTurnProofProbe/
    │  └─ main.swift
-   └─ OpenSlopClaudeReceiptSessionProbe/
+   ├─ OpenSlopClaudeReceiptSessionProbe/
+   │  └─ main.swift
+   └─ OpenSlopClaudeCustomReceiptProbe/
       └─ main.swift
 ```
 
@@ -131,5 +134,6 @@ macos-app
 - `InspectorPanelView` now has Summary / Verify / Browser tabs. Browser and Verify tabs are honest planned/pre-harness surfaces, not live feature claims.
 
 - `WorkbenchCore/ClaudeRuntimeStatus.swift`, `ClaudeRuntimeStatusView.swift` и `OpenSlopClaudeStatusProbe` materialize S05a: GUI показывает только real Claude runtime status boundary и не открывает fake Claude turns.
-- `WorkbenchCore/ClaudeTurnProofResult.swift` и `OpenSlopClaudeTurnProofProbe` materialize S05b: один реальный non-persistent Claude turn проходит через daemon. GUI chat для Claude всё ещё закрыт.
-- `WorkbenchCore/ClaudeProofSessionMaterialization.swift` и `OpenSlopClaudeReceiptSessionProbe` materialize S05c: Claude receipt можно создать как read-only session summary. Submit/chat/resume для Claude остаются закрыты.
+- `WorkbenchCore/ClaudeTurnProofResult.swift` и `OpenSlopClaudeTurnProofProbe` materialize S05b: один реальный non-persistent Claude turn проходит через daemon. GUI dialog для Claude всё ещё закрыт.
+- `WorkbenchCore/ClaudeProofSessionMaterialization.swift` и `OpenSlopClaudeReceiptSessionProbe` materialize S05c: Claude receipt можно создать как read-only session summary. Submit/dialog/resume для Claude остаются закрыты.
+- `WorkbenchCore/ClaudeReceiptPromptPolicy.swift` и `OpenSlopClaudeCustomReceiptProbe` materialize S05d: пользовательский bounded Claude receipt prompt проходит через daemon-owned validation и real proof, но full Claude lifecycle остаётся закрыт.

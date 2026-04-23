@@ -80,5 +80,9 @@ provider
   - session mirror, native approvals, platform tools and tracing remain out of scope.
 - S05c materializes that receipt into a read-only session summary:
   - `core-daemon` exposes `claude-materialize-proof-session`;
-  - session lifecycle is still not full Claude chat lifecycle;
+  - session lifecycle is still not full Claude dialog lifecycle;
   - the materialized session only proves latest bounded receipt.
+- S05d lets the native GUI provide one custom bounded receipt prompt:
+  - daemon validates empty and oversized prompts before bridge launch;
+  - successful proof still materializes only singleton `claude-turn-proof-latest`;
+  - resume, history, native approvals, platform tools and tracing remain out of scope.

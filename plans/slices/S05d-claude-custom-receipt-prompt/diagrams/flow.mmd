@@ -1,0 +1,10 @@
+flowchart LR
+    U[User bounded receipt prompt] --> UI[Native Claude receipt form]
+    UI --> WC[WorkbenchCore materializeClaudeProofSession]
+    WC --> D[core-daemon stdio]
+    D --> V{Prompt policy}
+    V -->|empty or >512 bytes| E[Error response]
+    V -->|valid| B[claude-bridge turn-proof]
+    B --> P[Claude proof receipt]
+    P --> S[session_list upsert]
+    S --> T[Read-only Claude receipt timeline]

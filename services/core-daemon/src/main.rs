@@ -23,6 +23,7 @@ use std::time::{Duration, Instant};
 
 const COMMAND_EXEC_CONTROL_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 const CLAUDE_TURN_PROOF_PROMPT: &str = "Reply with exactly OPENSLOP_CLAUDE_OK and nothing else.";
+const CLAUDE_RECEIPT_PROMPT_MAX_BYTES: usize = 512;
 
 static CODEX_RUNTIME_REGISTRY: LazyLock<Mutex<CodexRuntimeRegistry>> =
     LazyLock::new(|| Mutex::new(CodexRuntimeRegistry::new()));
@@ -269,7 +270,8 @@ fn claude_turn_proof_json(
     input_text: &str,
     pretty: bool,
 ) -> Result<String, String> {
-    let proof = load_claude_turn_proof(repo_root, input_text);
+    let bounded_prompt = bounded_claude_receipt_prompt(input_text)?;
+    let proof = load_claude_turn_proof(repo_root, &bounded_prompt);
     serialize_payload(&proof, pretty)
 }
 
@@ -278,7 +280,8 @@ fn claude_materialize_proof_session_json(
     input_text: &str,
     pretty: bool,
 ) -> Result<String, String> {
-    let proof = load_claude_turn_proof(repo_root, input_text);
+    let bounded_prompt = bounded_claude_receipt_prompt(input_text)?;
+    let proof = load_claude_turn_proof(repo_root, &bounded_prompt);
     let session = map_claude_proof_to_session(repo_root, &proof);
     upsert_runtime_session(repo_root, &session).map_err(|error| error.to_string())?;
     serialize_payload(
@@ -289,6 +292,23 @@ fn claude_materialize_proof_session_json(
         },
         pretty,
     )
+}
+
+fn bounded_claude_receipt_prompt(input_text: &str) -> Result<String, String> {
+    let trimmed = input_text.trim();
+
+    if trimmed.is_empty() {
+        return Err("missing Claude receipt prompt".to_string());
+    }
+
+    let byte_count = trimmed.as_bytes().len();
+    if byte_count > CLAUDE_RECEIPT_PROMPT_MAX_BYTES {
+        return Err(format!(
+            "Claude receipt prompt too large: {byte_count}/{CLAUDE_RECEIPT_PROMPT_MAX_BYTES} bytes"
+        ));
+    }
+
+    Ok(trimmed.to_string())
 }
 
 fn claude_bridge_script(repo_root: &Path) -> PathBuf {
@@ -1437,6 +1457,33 @@ mod tests {
         assert_eq!(session.provider, "Claude");
         assert_eq!(session.status, "receipt_proven");
         assert!(session.title.contains("OPENSLOP_CLAUDE_OK"));
+    }
+
+    #[test]
+    fn rejects_empty_claude_receipt_prompt_before_bridge() {
+        let temp = tempdir().expect("temp dir should exist");
+        let response = handle_stdio_request(
+            r#"{"operation":"claude-materialize-proof-session","inputText":"   "}"#,
+            temp.path(),
+        );
+
+        assert!(response.contains("\"kind\":\"error\""));
+        assert!(response.contains("missing Claude receipt prompt"));
+    }
+
+    #[test]
+    fn rejects_oversized_claude_receipt_prompt_before_bridge() {
+        let temp = tempdir().expect("temp dir should exist");
+        let too_large = "x".repeat(CLAUDE_RECEIPT_PROMPT_MAX_BYTES + 1);
+        let request = serde_json::json!({
+            "operation": "claude-materialize-proof-session",
+            "inputText": too_large,
+        });
+        let response = handle_stdio_request(&request.to_string(), temp.path());
+
+        assert!(response.contains("\"kind\":\"error\""));
+        assert!(response.contains("Claude receipt prompt too large"));
+        assert!(response.contains("513/512 bytes"));
     }
 
     #[test]
