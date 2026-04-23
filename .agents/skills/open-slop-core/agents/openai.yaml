@@ -1,0 +1,4 @@
+interface:
+  display_name: "OpenSlop Core"
+  short_description: "OpenSlop product-wide routing context"
+  default_prompt: "Use $open-slop-core when an OpenSlop task crosses multiple domains or needs product-wide context."
