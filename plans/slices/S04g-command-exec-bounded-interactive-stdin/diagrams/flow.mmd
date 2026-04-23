@@ -1,0 +1,12 @@
+flowchart TD
+    A[Run fixed interactive proof command] --> B[READY]
+    B --> C[awaiting control]
+    C --> D[write PING-1]
+    D --> E[PING-1]
+    E --> F[awaiting control]
+    F --> G[write PING-2]
+    G --> H[PING-2]
+    H --> I[awaiting control]
+    I --> J[close stdin]
+    J --> K[CLOSED]
+    K --> L[result exit 0]

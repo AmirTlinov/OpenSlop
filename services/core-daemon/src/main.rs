@@ -337,8 +337,7 @@ fn codex_command_exec_control_stream_json(
             .process_id
             .clone()
             .ok_or_else(|| "missing processId".to_string())?,
-        writes_seen: 0,
-        terminates_seen: 0,
+        awaiting_followup_control: true,
     });
     let result = stream_codex_command_with_control(repo_root, params, |delta| {
         bridge.borrow_mut().emit_output_and_wait_for_control(delta)
@@ -400,8 +399,7 @@ struct CodexCommandExecControlBridge<'a, R: io::Read, W: Write> {
     writer: &'a mut W,
     stdin_fd: RawFd,
     process_id: String,
-    writes_seen: usize,
-    terminates_seen: usize,
+    awaiting_followup_control: bool,
 }
 
 impl<R: io::Read, W: Write> CodexCommandExecControlBridge<'_, R, W> {
@@ -420,25 +418,17 @@ impl<R: io::Read, W: Write> CodexCommandExecControlBridge<'_, R, W> {
         writeln!(self.writer, "{payload}").map_err(|error| error.to_string())?;
         self.writer.flush().map_err(|error| error.to_string())?;
 
-        if self.writes_seen == 0 {
-            let control = wait_for_command_exec_write(
+        if self.awaiting_followup_control {
+            let control = wait_for_command_exec_control(
                 self.reader,
                 self.writer,
                 self.stdin_fd,
                 &self.process_id,
             )?;
-            self.writes_seen += 1;
-            return Ok(Some(control));
-        }
-
-        if self.terminates_seen == 0 {
-            let control = wait_for_command_exec_terminate(
-                self.reader,
-                self.writer,
-                self.stdin_fd,
-                &self.process_id,
-            )?;
-            self.terminates_seen += 1;
+            self.awaiting_followup_control = match &control {
+                CodexCommandExecControlRequest::Write(params) => !params.close_stdin,
+                CodexCommandExecControlRequest::Terminate(_) => false,
+            };
             return Ok(Some(control));
         }
 
@@ -529,7 +519,7 @@ fn wait_for_approval_decision(
     }
 }
 
-fn wait_for_command_exec_write(
+fn wait_for_command_exec_control(
     reader: &mut io::BufReader<impl io::Read>,
     writer: &mut impl Write,
     stdin_fd: RawFd,
@@ -541,20 +531,20 @@ fn wait_for_command_exec_write(
             writer,
             stdin_fd,
             COMMAND_EXEC_CONTROL_WAIT_TIMEOUT,
-            "command/exec write follow-up",
+            "command/exec control follow-up",
         )
-        .map_err(|error| map_command_exec_control_wait_error(error, "write"))?
+        .map_err(map_command_exec_control_wait_error)?
         else {
-            return Err("stdio closed while waiting for command/exec write".to_string());
+            return Err("stdio closed while waiting for command/exec control".to_string());
         };
 
         let operation = request.operation.or(request.query).unwrap_or_default();
-        if operation != "codex-command-exec-write" {
+        if operation != "codex-command-exec-write" && operation != "codex-command-exec-terminate" {
             writeln!(
                 writer,
                 "{}",
                 serialize_error(format!(
-                    "unsupported operation while waiting for command/exec write: {operation}"
+                    "unsupported operation while waiting for command/exec control: {operation}"
                 ))
             )
             .map_err(|error| error.to_string())?;
@@ -563,70 +553,29 @@ fn wait_for_command_exec_write(
         }
 
         if request.process_id.as_deref() != Some(process_id) {
+            let message = if operation == "codex-command-exec-write" {
+                "write processId does not match active command/exec".to_string()
+            } else {
+                "terminate processId does not match active command/exec".to_string()
+            };
             writeln!(
                 writer,
                 "{}",
-                serialize_error("write processId does not match active command/exec".to_string())
+                serialize_error(message)
             )
             .map_err(|error| error.to_string())?;
             writer.flush().map_err(|error| error.to_string())?;
             continue;
         }
 
-        return Ok(CodexCommandExecControlRequest::Write(
-            CodexCommandExecWriteParams {
-                process_id: process_id.to_string(),
-                delta_base64: request.delta_base64,
-                close_stdin: request.close_stdin.unwrap_or(false),
-            },
-        ));
-    }
-}
-
-fn wait_for_command_exec_terminate(
-    reader: &mut io::BufReader<impl io::Read>,
-    writer: &mut impl Write,
-    stdin_fd: RawFd,
-    process_id: &str,
-) -> Result<CodexCommandExecControlRequest, String> {
-    loop {
-        let Some(request) = read_next_stdio_request_with_timeout(
-            reader,
-            writer,
-            stdin_fd,
-            COMMAND_EXEC_CONTROL_WAIT_TIMEOUT,
-            "command/exec terminate follow-up",
-        )
-        .map_err(|error| map_command_exec_control_wait_error(error, "terminate"))?
-        else {
-            return Err("stdio closed while waiting for command/exec terminate".to_string());
-        };
-
-        let operation = request.operation.or(request.query).unwrap_or_default();
-        if operation != "codex-command-exec-terminate" {
-            writeln!(
-                writer,
-                "{}",
-                serialize_error(format!(
-                    "unsupported operation while waiting for command/exec terminate: {operation}"
-                ))
-            )
-            .map_err(|error| error.to_string())?;
-            writer.flush().map_err(|error| error.to_string())?;
-            continue;
-        }
-
-        if request.process_id.as_deref() != Some(process_id) {
-            writeln!(
-                writer,
-                "{}",
-                serialize_error(
-                    "terminate processId does not match active command/exec".to_string(),
-                )
-            )
-            .map_err(|error| error.to_string())?;
-            writer.flush().map_err(|error| error.to_string())?;
-            continue;
+        if operation == "codex-command-exec-write" {
+            return Ok(CodexCommandExecControlRequest::Write(
+                CodexCommandExecWriteParams {
+                    process_id: process_id.to_string(),
+                    delta_base64: request.delta_base64,
+                    close_stdin: request.close_stdin.unwrap_or(false),
+                },
+            ));
         }
 
         return Ok(CodexCommandExecControlRequest::Terminate(
@@ -1002,10 +951,10 @@ fn wait_for_stdio_input(stdin_fd: RawFd, timeout: Duration) -> io::Result<()> {
     Ok(())
 }
 
-fn map_command_exec_control_wait_error(error: io::Error, operation: &str) -> String {
+fn map_command_exec_control_wait_error(error: io::Error) -> String {
     if error.kind() == io::ErrorKind::TimedOut {
         return format!(
-            "timed out while waiting for command/exec {operation} after {}s; proof lane fails closed",
+            "timed out while waiting for command/exec control after {}s; proof lane fails closed",
             COMMAND_EXEC_CONTROL_WAIT_TIMEOUT.as_secs()
         );
     }
@@ -1175,6 +1124,30 @@ mod tests {
     }
 
     #[test]
+    fn command_exec_control_accepts_close_stdin_write() {
+        let mut reader = io::BufReader::new(io::Cursor::new(
+            br#"{"operation":"codex-command-exec-write","processId":"proc-1","closeStdin":true}
+"#
+            .to_vec(),
+        ));
+        let mut writer = Vec::<u8>::new();
+
+        let control = wait_for_command_exec_control(&mut reader, &mut writer, -1, "proc-1")
+            .expect("close stdin write should succeed");
+
+        let text = String::from_utf8(writer).expect("writer should be utf8");
+        assert!(text.is_empty());
+        match control {
+            CodexCommandExecControlRequest::Write(params) => {
+                assert_eq!(params.process_id, "proc-1");
+                assert_eq!(params.delta_base64, None);
+                assert!(params.close_stdin);
+            }
+            other => panic!("expected write control, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn command_exec_write_rejects_wrong_process_id_and_keeps_waiting() {
         let mut reader = io::BufReader::new(io::Cursor::new(
             br#"{"operation":"codex-command-exec-write","processId":"wrong-proc","deltaBase64":"UElORwo="}
@@ -1184,7 +1157,7 @@ mod tests {
         ));
         let mut writer = Vec::<u8>::new();
 
-        let control = wait_for_command_exec_write(&mut reader, &mut writer, -1, "proc-1")
+        let control = wait_for_command_exec_control(&mut reader, &mut writer, -1, "proc-1")
             .expect("write should recover");
 
         let text = String::from_utf8(writer).expect("writer should be utf8");
@@ -1209,7 +1182,7 @@ mod tests {
         ));
         let mut writer = Vec::<u8>::new();
 
-        let control = wait_for_command_exec_terminate(&mut reader, &mut writer, -1, "proc-1")
+        let control = wait_for_command_exec_control(&mut reader, &mut writer, -1, "proc-1")
             .expect("terminate should recover");
 
         let text = String::from_utf8(writer).expect("writer should be utf8");

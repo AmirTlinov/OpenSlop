@@ -4,12 +4,7 @@ import WorkbenchCore
 
 @main
 struct OpenSlopCommandExecControlProbe {
-    private static let command = [
-        "python3",
-        "-u",
-        "-c",
-        "import sys,time; print('READY', flush=True); data=sys.stdin.readline(); sys.stdout.write(data); sys.stdout.flush(); time.sleep(60)"
-    ]
+    private static let command = DaemonCodexCommandExecProofCommand.boundedInteractiveEcho
 
     static func main() async {
         let client = CoreDaemonClient()

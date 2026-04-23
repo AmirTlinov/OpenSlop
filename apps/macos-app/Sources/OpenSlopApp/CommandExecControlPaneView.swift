@@ -7,21 +7,23 @@ struct CommandExecControlPaneView: View {
     let surface: DaemonCodexCommandExecControlSurface?
     let onRun: () -> Void
     let onSendWrite: () -> Void
+    let onCloseStdin: () -> Void
     let onTerminate: () -> Void
     let isRunDisabled: Bool
     let isWriteDisabled: Bool
+    let isCloseStdinDisabled: Bool
     let isTerminateDisabled: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Standalone exec control proof")
+                    Text("Standalone exec interactive proof")
                         .font(.headline)
-                    Text("Guided same-connection proof lane. Current scope: один fixed command, one write, потом one terminate.")
+                    Text("Bounded same-connection proof lane. Fixed command ждёт output-paced follow-up control: write, close stdin или terminate.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text("Если follow-up write или terminate не приходит примерно за 5 секунд, lane завершается failed.")
+                    Text("Каждый следующий control здесь привязан к output burst. Если follow-up control не приходит примерно за 5 секунд, lane завершается failed.")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -74,6 +76,24 @@ struct CommandExecControlPaneView: View {
                     .background(.background, in: RoundedRectangle(cornerRadius: 10))
             }
 
+            if let surface, !surface.stdinTrail.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("stdin trail")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+
+                    ScrollView {
+                        Text(surface.stdinTrail)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(10)
+                    }
+                    .frame(minHeight: 84, idealHeight: 96)
+                    .background(.background, in: RoundedRectangle(cornerRadius: 10))
+                }
+            }
+
             VStack(alignment: .leading, spacing: 6) {
                 Text("Output")
                     .font(.caption.weight(.semibold))
@@ -104,13 +124,16 @@ struct CommandExecControlPaneView: View {
                 Button("Отправить stdin", action: onSendWrite)
                     .disabled(isWriteDisabled)
 
+                Button("Закрыть stdin", action: onCloseStdin)
+                    .disabled(isCloseStdinDisabled)
+
                 Button("Завершить", action: onTerminate)
                     .disabled(isTerminateDisabled)
 
                 Spacer()
             }
 
-            Text("Pane не обещает reconnect, resize и полноценный terminal runtime. Текущий contour доказан только для этого fixed proof command.")
+            Text("Pane не обещает reconnect, resize и полноценный terminal runtime. Текущий contour доказан только для fixed output-paced proof command.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
@@ -134,10 +157,8 @@ struct CommandExecControlPaneView: View {
 
     private var stageLabel: String {
         switch surface?.stage {
-        case .awaitingWrite:
-            return "awaiting write"
-        case .awaitingTerminate:
-            return "awaiting terminate"
+        case .awaitingControl:
+            return "awaiting control"
         case .completed:
             return "completed"
         case .failed:

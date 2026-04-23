@@ -1,0 +1,26 @@
+# ACCEPTANCE
+
+- `services/core-daemon/src/main.rs` принимает bounded same-connection control dialogue:
+  - repeated `codex-command-exec-write`,
+  - one `codex-command-exec-write(closeStdin=true)`,
+  - optional `codex-command-exec-terminate`.
+- `WorkbenchCore/CodexCommandExecControlSurface.swift` держит:
+  - `stdinTrail`,
+  - stage `awaitingControl`,
+  - live output и final exit.
+- `CommandExecControlPaneView` показывает:
+  - fixed proof command,
+  - stdin draft editor,
+  - stdin trail,
+  - buttons `Отправить stdin`, `Закрыть stdin`, `Завершить`.
+- `OpenSlopCommandExecInteractiveProbe` доказывает end-to-end:
+  - `READY -> PING-1 -> PING-2 -> CLOSED`,
+  - `stdinTrail="PING-1\nPING-2\n[close-stdin]\n"`,
+  - final exit `0`,
+  - final `stdout/stderr` пусты.
+- Regression proof остаётся зелёным:
+  - `OpenSlopCommandExecControlProbe`,
+  - `OpenSlopCommandExecControlNegativeProbe`,
+  - `OpenSlopCommandExecControlSurfaceProbe`,
+  - `OpenSlopCommandExecControlTimeoutProbe`.
+- Слайс не заявляет live transcript control transport, reconnect, `resize`, multi-client, kill semantics и full terminal runtime.

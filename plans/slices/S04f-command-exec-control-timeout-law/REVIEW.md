@@ -6,8 +6,8 @@
 - `cargo test -p core-daemon` -> PASS
 - `swift build --package-path apps/macos-app` -> PASS
 - `make smoke-codex-command-exec-control-timeout` -> PASS
-  - `missing_write_error` содержит `timed out while waiting for command/exec write after 5s`
-  - `missing_terminate_error` содержит `timed out while waiting for command/exec terminate after 5s`
+  - `missing_write_error` содержит `timed out while waiting for command/exec control after 5s`
+  - `missing_terminate_error` содержит `timed out while waiting for command/exec control after 5s`
   - `joined_output="READY\n"` и `joined_output="READY\nPING\n"`
 - `make smoke-codex-command-exec-control` -> PASS
 - `make smoke-codex-command-exec-control-negative` -> PASS

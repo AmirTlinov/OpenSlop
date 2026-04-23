@@ -4,12 +4,7 @@ import WorkbenchCore
 
 @main
 struct OpenSlopCommandExecControlNegativeProbe {
-    private static let command = [
-        "python3",
-        "-u",
-        "-c",
-        "import sys,time; print('READY', flush=True); data=sys.stdin.readline(); sys.stdout.write(data); sys.stdout.flush(); time.sleep(60)"
-    ]
+    private static let command = DaemonCodexCommandExecProofCommand.boundedInteractiveEcho
 
     private static let pingBase64 = Data("PING\n".utf8).base64EncodedString()
 

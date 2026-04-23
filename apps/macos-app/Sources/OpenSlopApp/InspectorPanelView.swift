@@ -9,9 +9,11 @@ struct InspectorPanelView: View {
     let commandExecSurface: DaemonCodexCommandExecControlSurface?
     let onRunCommandExec: () -> Void
     let onSendCommandExecWrite: () -> Void
+    let onCloseCommandExecStdin: () -> Void
     let onTerminateCommandExec: () -> Void
     let isRunCommandExecDisabled: Bool
     let isCommandExecWriteDisabled: Bool
+    let isCommandExecCloseStdinDisabled: Bool
     let isCommandExecTerminateDisabled: Bool
 
     var body: some View {
@@ -47,9 +49,11 @@ struct InspectorPanelView: View {
                         surface: commandExecSurface,
                         onRun: onRunCommandExec,
                         onSendWrite: onSendCommandExecWrite,
+                        onCloseStdin: onCloseCommandExecStdin,
                         onTerminate: onTerminateCommandExec,
                         isRunDisabled: isRunCommandExecDisabled,
                         isWriteDisabled: isCommandExecWriteDisabled,
+                        isCloseStdinDisabled: isCommandExecCloseStdinDisabled,
                         isTerminateDisabled: isCommandExecTerminateDisabled
                     )
                 }

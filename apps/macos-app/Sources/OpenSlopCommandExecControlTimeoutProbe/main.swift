@@ -4,12 +4,7 @@ import WorkbenchCore
 
 @main
 struct OpenSlopCommandExecControlTimeoutProbe {
-    private static let command = [
-        "python3",
-        "-u",
-        "-c",
-        "import sys,time; print('READY', flush=True); data=sys.stdin.readline(); sys.stdout.write(data); sys.stdout.flush(); time.sleep(60)"
-    ]
+    private static let command = DaemonCodexCommandExecProofCommand.boundedInteractiveEcho
 
     private static let pingBase64 = Data("PING\n".utf8).base64EncodedString()
 
@@ -20,11 +15,11 @@ struct OpenSlopCommandExecControlTimeoutProbe {
         print("missing_write_error=\(escape(missingWrite.message)) elapsed_ms=\(Int(missingWrite.elapsedMs)) joined_output=\(escape(missingWrite.joinedOutput))")
         print("missing_terminate_error=\(escape(missingTerminate.message)) elapsed_ms=\(Int(missingTerminate.elapsedMs)) joined_output=\(escape(missingTerminate.joinedOutput))")
 
-        guard missingWrite.message.contains("timed out while waiting for command/exec write after 5s") else {
+        guard missingWrite.message.contains("timed out while waiting for command/exec control after 5s") else {
             fail("missing write contour did not fail with 5s timeout.")
         }
 
-        guard missingTerminate.message.contains("timed out while waiting for command/exec terminate after 5s") else {
+        guard missingTerminate.message.contains("timed out while waiting for command/exec control after 5s") else {
             fail("missing terminate contour did not fail with 5s timeout.")
         }
 

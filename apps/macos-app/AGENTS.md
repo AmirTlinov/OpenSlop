@@ -47,7 +47,9 @@ macos-app
    │  └─ main.swift
    ├─ OpenSlopCommandExecControlSurfaceProbe/
    │  └─ main.swift
-   └─ OpenSlopCommandExecControlTimeoutProbe/
+   ├─ OpenSlopCommandExecControlTimeoutProbe/
+   │  └─ main.swift
+   └─ OpenSlopCommandExecInteractiveProbe/
       └─ main.swift
 ```
 
@@ -64,7 +66,8 @@ macos-app
 - `OpenSlopCommandExecControlProbe` доказывает следующий law: one same-connection streaming exec принимает follow-up `write`, echo'ит `PING`, потом завершается через follow-up `terminate`.
 - `WorkbenchCore/CodexTerminalSurface.swift` materialize'ит первый read-only/live-only terminal surface только из streamed transcript, когда есть `processId` и raw `terminalStdin`.
 - `TerminalPaneView` показывает этот surface в inspector как честный live-only pane без stdin control, resize и reconnect claims.
-- `WorkbenchCore/CodexCommandExecControlSurface.swift` держит отдельную UI truth для guided standalone exec proof contour: live output, stable `processId`, stage `awaitingWrite/awaitingTerminate`, final exit.
-- `CommandExecControlPaneView` показывает этот contour в inspector и честно говорит, что это пока fixed proof command + bounded one-write/one-terminate lane, а не full terminal runtime.
+- `WorkbenchCore/CodexCommandExecControlSurface.swift` держит standalone interactive proof truth: live output, stable `processId`, stage `awaitingControl`, `stdinTrail`, final exit.
+- `CommandExecControlPaneView` показывает bounded standalone interactive proof lane: output-paced `write`, `close stdin`, `terminate`, плюс честный `stdin trail`.
 - `OpenSlopCommandExecControlSurfaceProbe` доказывает, что GUI surface и probe share one same-connection proof contour с `READY -> PING -> terminate`.
-- `OpenSlopCommandExecControlTimeoutProbe` доказывает fail-closed contour: если GUI не прислал `write` или `terminate`, lane падает примерно за 5 секунд и не зависает молча.
+- `OpenSlopCommandExecControlTimeoutProbe` доказывает fail-closed contour: если GUI не прислал ожидаемый follow-up control, lane падает примерно за 5 секунд и не зависает молча.
+- `OpenSlopCommandExecInteractiveProbe` доказывает следующий contour: `READY -> PING-1 -> PING-2 -> closeStdin -> CLOSED`, zero exit и честный `stdin trail`.

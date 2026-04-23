@@ -4,12 +4,7 @@ import WorkbenchCore
 
 @main
 struct OpenSlopCommandExecControlSurfaceProbe {
-    private static let command = [
-        "python3",
-        "-u",
-        "-c",
-        "import sys,time; print('READY', flush=True); data=sys.stdin.readline(); sys.stdout.write(data); sys.stdout.flush(); time.sleep(60)"
-    ]
+    private static let command = DaemonCodexCommandExecProofCommand.boundedInteractiveEcho
 
     static func main() async {
         let client = CoreDaemonClient()
@@ -22,9 +17,10 @@ struct OpenSlopCommandExecControlSurfaceProbe {
                 command: command,
                 processId: processId
             ) { outputEvent in
-                let nextStage = await recorder.record(outputEvent)
+                let joinedOutput = await recorder.record(outputEvent)
 
-                if nextStage == .awaitingWrite {
+                if joinedOutput.contains("READY"), !(await recorder.writeSent) {
+                    await recorder.markWriteSent()
                     return .write(
                         DaemonCodexCommandExecWriteRequest(
                             processId: processId,
@@ -34,7 +30,8 @@ struct OpenSlopCommandExecControlSurfaceProbe {
                     )
                 }
 
-                if nextStage == .awaitingTerminate {
+                if joinedOutput.contains("PING"), !(await recorder.terminateSent) {
+                    await recorder.markTerminateSent()
                     return .terminate(
                         DaemonCodexCommandExecTerminateRequest(processId: processId)
                     )
@@ -113,30 +110,33 @@ struct OpenSlopCommandExecControlSurfaceProbe {
 
 private actor ProbeRecorder {
     private var surface: DaemonCodexCommandExecControlSurface
-    private var ordinal = 0
+    private(set) var writeSent = false
+    private(set) var terminateSent = false
 
     init(command: [String], processId: String) {
         surface = DaemonCodexCommandExecControlSurfaceProjector.start(command: command, processId: processId)
     }
 
-    func record(_ event: DaemonCodexCommandExecOutputEvent) -> DaemonCodexCommandExecControlStage {
-        let nextStage: DaemonCodexCommandExecControlStage
-        switch ordinal {
-        case 0:
-            nextStage = .awaitingWrite
-        case 1:
-            nextStage = .awaitingTerminate
-        default:
-            nextStage = .running
-        }
-
-        ordinal += 1
+    func record(_ event: DaemonCodexCommandExecOutputEvent) -> String {
         surface = DaemonCodexCommandExecControlSurfaceProjector.recordOutput(
             event,
-            nextStage: nextStage,
+            nextStage: .awaitingControl,
             to: surface
         )
-        return nextStage
+        return surface.mergedOutput
+    }
+
+    func markWriteSent() {
+        writeSent = true
+        surface = DaemonCodexCommandExecControlSurfaceProjector.markWrite(
+            raw: "PING\n",
+            on: surface
+        )
+    }
+
+    func markTerminateSent() {
+        terminateSent = true
+        surface = DaemonCodexCommandExecControlSurfaceProjector.markTerminate(on: surface)
     }
 
     func complete(_ result: DaemonCodexCommandExecResult) -> DaemonCodexCommandExecControlSurface {

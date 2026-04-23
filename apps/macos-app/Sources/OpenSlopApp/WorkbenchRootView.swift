@@ -89,15 +89,11 @@ struct WorkbenchRootView: View {
     @State private var transcript: DaemonCodexTranscript?
     @State private var pendingApproval: DaemonCodexApprovalRequest?
     @State private var approvalContinuation: CheckedContinuation<DaemonCodexApprovalDecision, Never>?
-    @State private var commandExecArgvText = """
-python3
--u
--c
-import sys,time; print('READY', flush=True); data=sys.stdin.readline(); sys.stdout.write(data); sys.stdout.flush(); time.sleep(60)
-"""
+    @State private var commandExecArgvText = DaemonCodexCommandExecProofCommand.boundedInteractiveEcho.joined(separator: "\n")
     @State private var commandExecStdinText = "PING\n"
     @State private var commandExecSurface: DaemonCodexCommandExecControlSurface?
     @State private var commandExecContinuation: CheckedContinuation<DaemonCodexCommandExecControlRequest?, Never>?
+    @State private var commandExecAllowsMoreControls = false
 
     private var selectedSession: DaemonSessionSummary? {
         sessions.first(where: { $0.id == selectedSessionID }) ?? sessions.first
@@ -138,7 +134,7 @@ import sys,time; print('READY', flush=True); data=sys.stdin.readline(); sys.stdo
         }
 
         switch commandExecSurface.stage {
-        case .running, .awaitingWrite, .awaitingTerminate:
+        case .running, .awaitingControl:
             return true
         default:
             return false
@@ -150,7 +146,19 @@ import sys,time; print('READY', flush=True); data=sys.stdin.readline(); sys.stdo
             return false
         }
 
-        return commandExecSurface.stage == .awaitingWrite && commandExecContinuation != nil
+        return commandExecSurface.stage == .awaitingControl
+            && commandExecContinuation != nil
+            && commandExecAllowsMoreControls
+    }
+
+    private var canCloseCommandExecStdin: Bool {
+        guard let commandExecSurface else {
+            return false
+        }
+
+        return commandExecSurface.stage == .awaitingControl
+            && commandExecContinuation != nil
+            && commandExecAllowsMoreControls
     }
 
     private var canTerminateCommandExec: Bool {
@@ -158,7 +166,9 @@ import sys,time; print('READY', flush=True); data=sys.stdin.readline(); sys.stdo
             return false
         }
 
-        return commandExecSurface.stage == .awaitingTerminate && commandExecContinuation != nil
+        return commandExecSurface.stage == .awaitingControl
+            && commandExecContinuation != nil
+            && commandExecAllowsMoreControls
     }
 
     var body: some View {
@@ -201,9 +211,11 @@ import sys,time; print('READY', flush=True); data=sys.stdin.readline(); sys.stdo
                             Task { await runCommandExecControl() }
                         },
                         onSendCommandExecWrite: resolveCommandExecWrite,
+                        onCloseCommandExecStdin: resolveCommandExecCloseStdin,
                         onTerminateCommandExec: resolveCommandExecTerminate,
                         isRunCommandExecDisabled: !canRunCommandExec,
                         isCommandExecWriteDisabled: !canSendCommandExecWrite,
+                        isCommandExecCloseStdinDisabled: !canCloseCommandExecStdin,
                         isCommandExecTerminateDisabled: !canTerminateCommandExec
                     )
                     .frame(minWidth: 280, idealWidth: 320, maxWidth: 360)
@@ -378,6 +390,7 @@ import sys,time; print('READY', flush=True); data=sys.stdin.readline(); sys.stdo
                 mergedOutput: "",
                 stdout: "",
                 stderr: "",
+                stdinTrail: "",
                 exitCode: nil,
                 stage: .failed,
                 lastError: "Нужен хотя бы один argv line."
@@ -387,25 +400,23 @@ import sys,time; print('READY', flush=True); data=sys.stdin.readline(); sys.stdo
 
         let processId = "openslop-command-exec-ui-\(UUID().uuidString)"
         commandExecContinuation = nil
+        commandExecAllowsMoreControls = true
         commandExecSurface = DaemonCodexCommandExecControlSurfaceProjector.start(
             command: argv,
             processId: processId
         )
 
         do {
-            let controlSequence = CommandExecControlSequence()
             let result = try await client.streamCodexCommandWithControl(
                 command: argv,
                 processId: processId
             ) { outputEvent in
-                let nextStage = await controlSequence.nextStage()
-
-                if nextStage == .awaitingWrite || nextStage == .awaitingTerminate {
+                if await MainActor.run(body: { self.commandExecAllowsMoreControls }) {
                     await MainActor.run {
                         if let commandExecSurface {
                             self.commandExecSurface = DaemonCodexCommandExecControlSurfaceProjector.recordOutput(
                                 outputEvent,
-                                nextStage: nextStage,
+                                nextStage: .awaitingControl,
                                 to: commandExecSurface
                             )
                         }
@@ -415,9 +426,9 @@ import sys,time; print('READY', flush=True); data=sys.stdin.readline(); sys.stdo
 
                 await MainActor.run {
                     if let commandExecSurface {
-                        self.commandExecSurface = DaemonCodexCommandExecControlSurfaceProjector.recordOutput(
-                            outputEvent,
-                            nextStage: .running,
+                            self.commandExecSurface = DaemonCodexCommandExecControlSurfaceProjector.recordOutput(
+                                outputEvent,
+                                nextStage: .running,
                             to: commandExecSurface
                         )
                     }
@@ -432,6 +443,7 @@ import sys,time; print('READY', flush=True); data=sys.stdin.readline(); sys.stdo
                 )
             }
             commandExecContinuation = nil
+            commandExecAllowsMoreControls = false
         } catch {
             if let commandExecSurface {
                 self.commandExecSurface = DaemonCodexCommandExecControlSurfaceProjector.fail(
@@ -445,12 +457,14 @@ import sys,time; print('READY', flush=True); data=sys.stdin.readline(); sys.stdo
                     mergedOutput: "",
                     stdout: "",
                     stderr: "",
+                    stdinTrail: "",
                     exitCode: nil,
                     stage: .failed,
                     lastError: error.localizedDescription
                 )
             }
             commandExecContinuation = nil
+            commandExecAllowsMoreControls = false
         }
     }
 
@@ -465,16 +479,17 @@ import sys,time; print('READY', flush=True); data=sys.stdin.readline(); sys.stdo
     private func resolveCommandExecWrite() {
         guard
             let commandExecSurface,
-            commandExecSurface.stage == .awaitingWrite,
+            commandExecSurface.stage == .awaitingControl,
             let continuation = commandExecContinuation
         else {
             return
         }
 
         commandExecContinuation = nil
-        self.commandExecSurface = DaemonCodexCommandExecControlSurfaceProjector.setStage(
-            .running,
-            for: commandExecSurface
+        commandExecAllowsMoreControls = true
+        self.commandExecSurface = DaemonCodexCommandExecControlSurfaceProjector.markWrite(
+            raw: commandExecStdinText,
+            on: commandExecSurface
         )
         continuation.resume(
             returning: .write(
@@ -488,19 +503,45 @@ import sys,time; print('READY', flush=True); data=sys.stdin.readline(); sys.stdo
     }
 
     @MainActor
-    private func resolveCommandExecTerminate() {
+    private func resolveCommandExecCloseStdin() {
         guard
             let commandExecSurface,
-            commandExecSurface.stage == .awaitingTerminate,
+            commandExecSurface.stage == .awaitingControl,
             let continuation = commandExecContinuation
         else {
             return
         }
 
         commandExecContinuation = nil
-        self.commandExecSurface = DaemonCodexCommandExecControlSurfaceProjector.setStage(
-            .running,
-            for: commandExecSurface
+        commandExecAllowsMoreControls = false
+        self.commandExecSurface = DaemonCodexCommandExecControlSurfaceProjector.markCloseStdin(
+            on: commandExecSurface
+        )
+        continuation.resume(
+            returning: .write(
+                DaemonCodexCommandExecWriteRequest(
+                    processId: commandExecSurface.processId,
+                    deltaBase64: nil,
+                    closeStdin: true
+                )
+            )
+        )
+    }
+
+    @MainActor
+    private func resolveCommandExecTerminate() {
+        guard
+            let commandExecSurface,
+            commandExecSurface.stage == .awaitingControl,
+            let continuation = commandExecContinuation
+        else {
+            return
+        }
+
+        commandExecContinuation = nil
+        commandExecAllowsMoreControls = false
+        self.commandExecSurface = DaemonCodexCommandExecControlSurfaceProjector.markTerminate(
+            on: commandExecSurface
         )
         continuation.resume(
             returning: .terminate(
@@ -566,22 +607,5 @@ import sys,time; print('READY', flush=True); data=sys.stdin.readline(); sys.stdo
             return .unavailable(message: "Эта session пережила перезапуск раньше первого ответа. Первый turn ещё не materialized на диск, поэтому восстановить её уже нельзя.")
         }
         return .failed(message: message)
-    }
-}
-
-private actor CommandExecControlSequence {
-    private var ordinal = 0
-
-    func nextStage() -> DaemonCodexCommandExecControlStage {
-        defer { ordinal += 1 }
-
-        switch ordinal {
-        case 0:
-            return .awaitingWrite
-        case 1:
-            return .awaitingTerminate
-        default:
-            return .running
-        }
     }
 }
