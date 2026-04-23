@@ -171,6 +171,10 @@ struct WorkbenchSeed {
                 sections.append(meta.joined(separator: " · "))
             }
 
+            if let terminalStdin = item.terminalStdin, !terminalStdin.isEmpty {
+                sections.append("stdin raw " + escapedTerminalStdin(terminalStdin))
+            }
+
             let output = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !output.isEmpty {
                 sections.append(output)
@@ -189,6 +193,32 @@ struct WorkbenchSeed {
         default:
             return false
         }
+    }
+
+    private func escapedTerminalStdin(_ value: String) -> String {
+        var rendered = "\""
+        for scalar in value.unicodeScalars {
+            switch scalar {
+            case "\n":
+                rendered += "\\n"
+            case "\r":
+                rendered += "\\r"
+            case "\t":
+                rendered += "\\t"
+            case "\"":
+                rendered += "\\\""
+            case "\\":
+                rendered += "\\\\"
+            default:
+                if scalar.value < 0x20 || scalar.value == 0x7F {
+                    rendered += String(format: "\\u{%X}", scalar.value)
+                } else {
+                    rendered.append(String(scalar))
+                }
+            }
+        }
+        rendered += "\""
+        return rendered
     }
 
     private func approvalTitle(for approval: DaemonCodexApprovalRequest) -> String {

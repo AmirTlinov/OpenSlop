@@ -81,6 +81,7 @@ pub struct CodexTranscriptEntry {
     pub command: Option<String>,
     pub process_id: Option<String>,
     pub exit_code: Option<i32>,
+    pub terminal_stdin: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -537,6 +538,12 @@ impl LiveToolActivityOverlay {
                 kind,
                 delta,
             }) => self.append_output(&item_id, &turn_id, kind, &delta),
+            Some(LiveToolNotification::TerminalStdin {
+                item_id,
+                turn_id,
+                process_id,
+                stdin,
+            }) => self.append_terminal_stdin(&item_id, &turn_id, &process_id, &stdin),
             None => {}
         }
 
@@ -562,6 +569,26 @@ impl LiveToolActivityOverlay {
         }
 
         activity.entry.text.push_str(delta);
+    }
+
+    fn append_terminal_stdin(
+        &mut self,
+        item_id: &str,
+        turn_id: &str,
+        process_id: &str,
+        stdin: &str,
+    ) {
+        let activity = self.ensure_placeholder(item_id, turn_id, "command");
+        if !process_id.is_empty() {
+            activity.entry.process_id = Some(process_id.to_string());
+        }
+
+        if stdin.is_empty() {
+            return;
+        }
+
+        let entry = activity.entry.terminal_stdin.get_or_insert_with(String::new);
+        entry.push_str(stdin);
     }
 
     fn ensure_placeholder(
@@ -635,6 +662,12 @@ enum LiveToolNotification {
         turn_id: String,
         kind: &'static str,
         delta: String,
+    },
+    TerminalStdin {
+        item_id: String,
+        turn_id: String,
+        process_id: String,
+        stdin: String,
     },
 }
 
@@ -1352,6 +1385,7 @@ fn parse_transcript_item(item: &Value, turn_id: &str, turn_status: &str) -> Code
             command: None,
             process_id: None,
             exit_code: None,
+            terminal_stdin: None,
         },
         "agentMessage" => CodexTranscriptEntry {
             id: item_id,
@@ -1371,6 +1405,7 @@ fn parse_transcript_item(item: &Value, turn_id: &str, turn_status: &str) -> Code
             command: None,
             process_id: None,
             exit_code: None,
+            terminal_stdin: None,
         },
         "commandExecution" => parse_command_execution_entry(item, &item_id, turn_id, turn_status),
         "fileChange" => parse_file_change_entry(item, &item_id, turn_id, turn_status),
@@ -1384,6 +1419,7 @@ fn parse_transcript_item(item: &Value, turn_id: &str, turn_status: &str) -> Code
             command: None,
             process_id: None,
             exit_code: None,
+            terminal_stdin: None,
         },
     }
 }
@@ -1425,6 +1461,7 @@ fn parse_command_execution_entry(
         command,
         process_id,
         exit_code,
+        terminal_stdin: None,
     }
 }
 
@@ -1449,6 +1486,7 @@ fn parse_file_change_entry(
         command: None,
         process_id: None,
         exit_code: None,
+        terminal_stdin: None,
     }
 }
 
@@ -1529,6 +1567,14 @@ fn parse_live_tool_notification(
             kind: "fileChange",
             delta: params_string(params, "delta", method)?,
         })),
+        "item/commandExecution/terminalInteraction" => {
+            Ok(Some(LiveToolNotification::TerminalStdin {
+                item_id: params_string(params, "itemId", method)?,
+                turn_id: params_string(params, "turnId", method)?,
+                process_id: params_string(params, "processId", method)?,
+                stdin: params_string(params, "stdin", method)?,
+            }))
+        }
         _ => Ok(None),
     }
 }
@@ -1583,6 +1629,14 @@ fn merge_transcript_entry(target: &mut CodexTranscriptEntry, incoming: &CodexTra
     if incoming.exit_code.is_some() {
         target.exit_code = incoming.exit_code;
     }
+    if let Some(stdin) = incoming.terminal_stdin.as_ref() {
+        if !stdin.is_empty() {
+            let target_stdin = target.terminal_stdin.get_or_insert_with(String::new);
+            if stdin.len() >= target_stdin.len() {
+                *target_stdin = stdin.clone();
+            }
+        }
+    }
 
     if target.turn_status.is_empty() || is_terminal_status(Some(&incoming.turn_status)) {
         target.turn_status = incoming.turn_status.clone();
@@ -1623,6 +1677,7 @@ fn command_entry_placeholder(item_id: &str, turn_id: &str) -> CodexTranscriptEnt
         command: None,
         process_id: None,
         exit_code: None,
+        terminal_stdin: None,
     }
 }
 
@@ -1637,6 +1692,7 @@ fn file_change_entry_placeholder(item_id: &str, turn_id: &str) -> CodexTranscrip
         command: None,
         process_id: None,
         exit_code: None,
+        terminal_stdin: None,
     }
 }
 
@@ -1651,6 +1707,7 @@ fn generic_live_tool_placeholder(item_id: &str, turn_id: &str, kind: &str) -> Co
         command: None,
         process_id: None,
         exit_code: None,
+        terminal_stdin: None,
     }
 }
 
@@ -1923,6 +1980,7 @@ mod tests {
         );
         assert_eq!(command_item.process_id.as_deref(), Some("pty-stub-123"));
         assert_eq!(command_item.exit_code, Some(0));
+        assert_eq!(command_item.terminal_stdin.as_deref(), Some("\n"));
         assert!(command_item.text.contains("123"));
         assert!(
             streamed
@@ -1936,6 +1994,21 @@ mod tests {
                             .contains("python3 -c")
                 }))
         );
+        assert!(streamed.iter().any(|snapshot| {
+            snapshot
+                .items
+                .iter()
+                .any(|item| item.kind == "command" && item.terminal_stdin.as_deref() == Some("\n"))
+        }));
+        let readback =
+            read_codex_transcript_with_binary(repo.path(), &registry.binary, &bootstrap.thread_id)
+                .expect("cold readback should succeed after materialization");
+        let readback_command_item = readback
+            .items
+            .iter()
+            .find(|item| item.kind == "command")
+            .expect("readback should keep command item");
+        assert_eq!(readback_command_item.terminal_stdin, None);
         assert!(
             snapshot
                 .items
@@ -2172,6 +2245,13 @@ if args[:3] == ['app-server', '--listen', 'stdio://']:
                     'itemId': 'cmd-1',
                     'delta': '123\\n',
                 }}), flush=True)
+                print(json.dumps({'method': 'item/commandExecution/terminalInteraction', 'params': {
+                    'threadId': STATE['thread_id'],
+                    'turnId': 'turn-stub-001',
+                    'itemId': 'cmd-1',
+                    'processId': 'pty-stub-123',
+                    'stdin': '\n',
+                }}), flush=True)
             items = [
                 {
                     'type': 'userMessage',
@@ -2200,6 +2280,17 @@ if args[:3] == ['app-server', '--listen', 'stdio://']:
                             'exitCode': 0,
                         }
                     }}), flush=True)
+                    items.append({
+                        'type': 'commandExecution',
+                        'id': 'cmd-1',
+                        'command': 'python3 -c "print(123)"',
+                        'commandActions': [],
+                        'cwd': '/tmp/repo',
+                        'status': 'completed',
+                        'aggregatedOutput': '123\\n',
+                        'processId': 'pty-stub-123',
+                        'exitCode': 0,
+                    })
                 items.append({
                     'type': 'agentMessage',
                     'id': 'item-2',

@@ -13,9 +13,9 @@
 
 ## Current posture
 
-S04 пока не закрыт целиком. В этом коммите закрыт следующий proof target: typed `commandExecution` transcript surface поверх уже существующего streaming + native approval path.
+S04 пока не закрыт целиком. В этом коммите закрыт следующий proof target: live passthrough для raw `item/commandExecution/terminalInteraction` через provider/core-daemon/Swift без PTY pane и без persistence claims.
 
-Следующий узкий proof target внутри того же S04: raw upstream witness для live `item/commandExecution/terminalInteraction`, чтобы перестать гадать, теряет ли сигнал `codex app-server` или уже наш provider/core-daemon/gui contour.
+Typed `commandExecution` transcript surface и raw upstream witness уже были закрыты раньше в этом же slice.
 
 ## Local evidence
 
@@ -25,9 +25,11 @@ S04 пока не закрыт целиком. В этом коммите зак
 - `swift build --package-path apps/macos-app` -> PASS
 - `swift run --package-path apps/macos-app OpenSlopTurnProbe` -> PASS
 - `swift run --package-path apps/macos-app OpenSlopApprovalProbe` -> PASS
+- `swift run --package-path apps/macos-app OpenSlopTerminalInteractionProbe` -> PASS
 - `make smoke-codex-turn` -> PASS
 - `make smoke-codex-approval` -> PASS
 - `make smoke-codex-terminal-interaction-witness` -> PASS
+- `make smoke-codex-terminal-interaction` -> PASS
 
 ## Changed surfaces
 
@@ -37,16 +39,20 @@ S04 пока не закрыт целиком. В этом коммите зак
 - `.agents/task_framer/next-slice-after-s04/preflight.md`
 - `.agents/task_framer/s04-next-slice/PREFLIGHT.md`
 - `.agents/task_framer/s04-terminal-interaction-witness/PREFLIGHT.md`
+- `.agents/task_framer/s04-terminal-interaction-passthrough/PREFLIGHT.md`
 - `domains/provider/rust/provider-domain/src/lib.rs`
 - `domains/provider/contracts/codex-app-server/v0.123.0/*`
 - `services/core-daemon/src/main.rs`
 - `apps/macos-app/Sources/WorkbenchCore/*`
 - `apps/macos-app/Sources/OpenSlopApp/*`
 - `apps/macos-app/Sources/OpenSlopApprovalProbe/main.swift`
+- `apps/macos-app/Sources/OpenSlopTerminalInteractionProbe/main.swift`
 - `apps/macos-app/Sources/OpenSlopTurnProbe/main.swift`
+- `apps/macos-app/Package.swift`
 - `plans/slices/S04-transcript-approval-pty/*`
 - `Makefile`
 - `plans/slices/S04-transcript-approval-pty/diagrams/terminal-interaction-witness.mmd`
+- `plans/slices/S04-transcript-approval-pty/diagrams/terminal-interaction-passthrough.mmd`
 - `domains/provider/contracts/codex-app-server/v0.123.0/witnesses/terminal_interaction_witness.py`
 
 ## Reviewer verdicts
@@ -142,6 +148,25 @@ What is proven:
 - `make smoke-codex-terminal-interaction-witness` проходит и подтверждает, что `codex app-server 0.123.0` может слать live `item/commandExecution/terminalInteraction`;
 - repo-local live proof показал raw `params.stdin = "\n"`, значит это уже upstream stdin/control traffic, а не автоматически user-friendly prompt;
 - sub-slice честно не притворяется PTY UI, stdin/write API, resize, kill или reconnect surface.
+
+### Terminal interaction passthrough reviewer pass
+Reviewer: `Cicero the 14th` (`reviewer`, 2026-04-23)
+
+Verdict: PASS
+
+Blocking findings:
+- none для текущего bounded scope.
+
+Non-blocking findings:
+- UI surface доказан кодом и semantic visual check, но без отдельного visual witness.
+- текущее представление `terminalStdin` сознательно lossy для будущего PTY lane: repeated chunks склеиваются, empty chunks отбрасываются.
+
+What is proven:
+- provider-domain парсит `item/commandExecution/terminalInteraction` и вешает `terminalStdin` на существующий `command` item, не смешивая его с output;
+- merge держит это поле внутри live overlay и не вводит новый transcript item kind;
+- Swift transcript model принимает `terminalStdin`, а command card показывает escaped marker вроде `stdin raw "\n"` как secondary detail;
+- live smoke подтверждает честную live-only картину: stable command item id, stable process id, raw payload `"\n"`, ordinary readback без `terminalStdin`;
+- после reviewer pass probe усилен: теперь он требует не только final streamed transcript, но и хотя бы один промежуточный streamed snapshot с `terminalStdin`.
 
 ## Closure note
 

@@ -20,6 +20,7 @@ public struct DaemonCodexTranscriptItem: Codable, Equatable, Identifiable, Senda
     public let command: String?
     public let processId: String?
     public let exitCode: Int?
+    public let terminalStdin: String?
 }
 
 public struct DaemonCodexTranscriptStreamEvent: Codable, Equatable, Sendable {

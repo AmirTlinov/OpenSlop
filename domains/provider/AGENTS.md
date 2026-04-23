@@ -36,6 +36,10 @@ provider
   - live `item/started`, `item/completed`, `item/commandExecution/outputDelta` и `item/fileChange/outputDelta` накладываются на successive snapshots;
   - `command`, optional `processId`, optional `exitCode` и aggregated output доходят до GUI как typed transcript items;
   - `item/commandExecution/terminalInteraction` пока сознательно не materialized в продуктовый PTY lane.
+- В следующем sub-slice S04 raw `terminalInteraction` доезжает как live passthrough:
+  - provider вешает raw `stdin/control` payload на уже существующий `command` item как `terminalStdin`;
+  - Swift transcript model и command card видят этот сигнал в streaming contour;
+  - обычный `thread/read` не обязан вернуть этот сигнал обратно, поэтому текущий contour остаётся strictly live-only.
 - Raw upstream truth для `item/commandExecution/terminalInteraction` теперь отделён отдельным witness-скриптом:
   - `domains/provider/contracts/codex-app-server/v0.123.0/witnesses/terminal_interaction_witness.py`;
   - он идёт напрямую в `codex app-server` по stdio и не проходит через provider/core-daemon/gui;

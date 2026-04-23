@@ -52,3 +52,7 @@ codex app-server generate-json-schema --out /tmp/openslop-codex-schema
   - witness идёт напрямую в `codex app-server` по stdio, ловит raw notifications и отвечает только на один вопрос: пришёл ли live `item/commandExecution/terminalInteraction`.
 - Этот witness не доказывает готовый PTY UX. Он доказывает более узкий факт: upstream может прислать live `item/commandExecution/terminalInteraction` до нашего provider/core-daemon/gui слоя.
 - Важная live-находка от witness на 2026-04-23: `params.stdin` в живом smoke пришёл как `"\n"`. Это значит, что `terminalInteraction` на upstream-уровне уже несёт raw stdin/control traffic и не должен автоматически трактоваться как user-friendly prompt.
+- Следующий уже продуктовый шаг поверх witness закрыт отдельно:
+  - provider/core-daemon/Swift теперь умеют довозить raw `terminalInteraction` как live `terminalStdin` на существующем `command` item;
+  - `make smoke-codex-terminal-interaction` подтверждает этот passthrough end-to-end;
+  - ordinary readback не используется как источник истины для этого сигнала и в текущем live proof вообще вернул `readback_command_items=0`.

@@ -37,3 +37,8 @@
   - ловит live `item/commandExecution/terminalInteraction`, если сигнал реально приходит;
   - live witness уже показал, что `params.stdin` может быть сырым вводом вроде `"\n"`, а не человекочитаемым prompt;
   - сам по себе не обещает PTY UI, stdin control, resize, kill или reconnect.
+- Следующий узкий продуктовый шаг поверх witness держит такую же жёсткую границу:
+  - raw `terminalInteraction` materialize'ится только как live `terminalStdin` у существующего `command` item;
+  - UI показывает escaped marker вроде `stdin raw "\n"` как вторичный detail, не как prompt;
+  - ordinary readback не объявляется truth surface для этого сигнала;
+  - в текущем live proof ordinary readback вернул `readback_command_items=0`, поэтому persistence claims здесь сознательно не делаются.

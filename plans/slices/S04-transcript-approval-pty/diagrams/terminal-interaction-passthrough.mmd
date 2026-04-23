@@ -1,0 +1,19 @@
+sequenceDiagram
+    autonumber
+    participant Codex as codex app-server
+    participant Provider as provider-domain overlay
+    participant Daemon as core-daemon
+    participant Swift as Swift transcript model
+
+    Codex-->>Provider: item/commandExecution/terminalInteraction
+    Note over Codex,Provider: raw stdin/control payload
+    Provider->>Provider: attach terminalStdin to existing command item
+    Provider-->>Daemon: streamed transcript snapshot
+    Daemon-->>Swift: codex_transcript_stream_event
+    Swift->>Swift: render secondary marker\nstdin raw "\\n"
+
+    Swift->>Daemon: codex-read-transcript
+    Daemon->>Provider: thread/read
+    Provider-->>Daemon: ordinary snapshot without terminalStdin
+    Daemon-->>Swift: readback transcript
+    Note over Swift: live-only passthrough\nno persistence claim
