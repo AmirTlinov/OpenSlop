@@ -45,20 +45,13 @@ struct TerminalPaneView: View {
                     .background(.background, in: RoundedRectangle(cornerRadius: 10))
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Output")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                ScrollView {
-                    Text(renderedOutput)
-                        .font(.footnote.monospaced())
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                }
-                .frame(minHeight: 140, idealHeight: 180)
-                .background(.background, in: RoundedRectangle(cornerRadius: 10))
-            }
+            MonospacedTailBlockView(
+                label: "Output",
+                tail: surface.outputTail,
+                emptyPlaceholder: "output waiting...",
+                minHeight: 140,
+                idealHeight: 180
+            )
 
             Text("Ordinary readback пока не удерживает этот live signal. Pane честно materialize'ится только на streamed transcript.")
                 .font(.caption)
@@ -67,11 +60,6 @@ struct TerminalPaneView: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
-    }
-
-    private var renderedOutput: String {
-        let output = surface.output.trimmingCharacters(in: .whitespacesAndNewlines)
-        return output.isEmpty ? "output waiting..." : surface.output
     }
 
     private func escaped(_ value: String) -> String {

@@ -158,6 +158,8 @@ struct WorkbenchSeed {
         case "command":
             var sections: [String] = []
             var meta: [String] = []
+            let hasLiveTerminal = (item.processId ?? "").isEmpty == false
+                && (item.terminalStdin ?? "").isEmpty == false
 
             if let processId = item.processId, !processId.isEmpty {
                 meta.append("PTY \(processId)")
@@ -177,7 +179,21 @@ struct WorkbenchSeed {
 
             let output = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !output.isEmpty {
-                sections.append(output)
+                if hasLiveTerminal {
+                    let tail = DaemonBoundedOutputTailProjector.tail(
+                        item.text,
+                        policy: .timelineTerminalPreview
+                    )
+                    sections.append(tail.visibleText)
+
+                    if let summary = tail.summary {
+                        sections.append(summary + " Полный live хвост открыт в Inspector.")
+                    } else {
+                        sections.append("Полный live хвост открыт в Inspector.")
+                    }
+                } else {
+                    sections.append(output)
+                }
             }
 
             return sections.isEmpty ? nil : sections.joined(separator: "\n\n")

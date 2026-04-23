@@ -13,6 +13,7 @@ macos-app
    │  ├─ CodexSessionBootstrap.swift
    │  ├─ CodexTranscriptSnapshot.swift
    │  ├─ CodexApprovalRequest.swift
+   │  ├─ BoundedOutputTail.swift
    │  ├─ CodexCommandExec.swift
    │  ├─ CodexCommandExecControlSurface.swift
    │  ├─ CodexTerminalSurface.swift
@@ -23,6 +24,7 @@ macos-app
    │  ├─ WorkbenchSeed.swift
    │  ├─ WorkbenchRootView.swift
    │  ├─ ApprovalSheetView.swift
+   │  ├─ MonospacedTailBlockView.swift
    │  ├─ CommandExecControlPaneView.swift
    │  ├─ TerminalPaneView.swift
    │  ├─ SidebarPanelView.swift
@@ -40,6 +42,8 @@ macos-app
    ├─ OpenSlopTerminalInteractionProbe/
    │  └─ main.swift
    ├─ OpenSlopTerminalSurfaceProbe/
+   │  └─ main.swift
+   ├─ OpenSlopTerminalTailProbe/
    │  └─ main.swift
    ├─ OpenSlopCommandExecProbe/
    │  └─ main.swift
@@ -81,4 +85,8 @@ macos-app
 - `OpenSlopCommandExecInteractiveProbe` доказывает следующий contour: `READY -> PING-1 -> PING-2 -> closeStdin -> CLOSED`, zero exit и честный `stdin trail`.
 - `OpenSlopCommandExecResizeProbe` отдельно доказывает PTY contour: `tty=true`, initial `80x24`, same-connection `resize -> 100x40`, затем `write+closeStdin`, и процесс сам печатает новую геометрию.
 - `OpenSlopCommandExecResizeSurfaceProbe` доказывает уже app-owned surface truth для resize mode: `controlTrail="[resize 100x40]\\nPING\\n[close-stdin]\\n"` и completed stage.
+- `WorkbenchCore/BoundedOutputTail.swift` даёт shared bounded tail projector для terminal-heavy monospaced surfaces. Это app-owned presentation hardening, не новая runtime truth.
+- `TerminalPaneView` и `CommandExecControlPaneView` рендерят inspector output через bounded tail block и честно помечают скрытый верх, когда clipping реально сработал.
+- `WorkbenchSeed` для live terminal command item держит timeline компактнее: вместо полного dump показывает bounded tail preview и отсылает к Inspector.
+- `OpenSlopTerminalTailProbe` доказывает deterministic clipping на synthetic terminal transcript и сохраняет последние строки без порчи маленького вывода.
 - Важная граница остаётся честной: resize mode теперь materialized в inspector только как fixed proof surface. Он не превращён в arbitrary terminal UI и не пробивает transcript contour.

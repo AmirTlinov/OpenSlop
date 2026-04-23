@@ -1,0 +1,6 @@
+flowchart TD
+    A[Transcript item or standalone exec surface] --> B[BoundedOutputTailProjector]
+    B --> C[Inspector monospaced tail block]
+    B --> D[Timeline live terminal preview]
+    C --> E[Caption reports hidden prefix when clipping happens]
+    D --> F[Timeline stays compact and points user to Inspector]

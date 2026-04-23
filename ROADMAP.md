@@ -7,7 +7,7 @@
 
 | Slice | Outcome | Depends on | Status |
 | --- | --- | --- | --- |
-| `S00-repo-constitution` | Конституция репозитория, карты, buildable seeds | — | in progress |
+| `S00-repo-constitution` | Конституция репозитория, карты, buildable seeds | — | done |
 | `S01-workbench-shell` | Первое настоящее окно workbench | S00 | planned |
 | `S02-event-spine` | Canonical event log, IPC, projections | S00 | done |
 | `S03-codex-runtime` | Live Codex bootstrap lane через app-server | S02 | done |
@@ -22,6 +22,7 @@
 | `S04h-live-transcript-control-witness` | Raw witness for live transcript `processId -> command/exec/write` feasibility | S04d | done |
 | `S04i-command-exec-resize-proof` | Standalone PTY `command/exec` resize proof lane | S04g | done |
 | `S04j-command-exec-resize-pane` | Native fixed resize proof mode in inspector pane | S04e,S04i | done |
+| `S04k-inspector-output-tail-hardening` | Bounded tail rendering for live terminal and proof output surfaces | S04d,S04j | done |
 | `S05-claude-runtime` | Claude runtime через bridge | S02 | planned |
 | `S06-git-review-artifacts` | Diff, artifacts, worktrees | S02 | planned |
 | `S07-browser-preview` | Встроенный native preview browser | S01,S02 | planned |

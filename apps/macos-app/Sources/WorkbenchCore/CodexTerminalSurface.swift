@@ -5,17 +5,21 @@ public struct DaemonCodexTerminalSurface: Equatable, Sendable {
     public let title: String
     public let command: String
     public let processId: String
-    public let output: String
+    public let outputTail: DaemonBoundedOutputTail
     public let terminalStdin: String
     public let exitCode: Int?
     public let turnStatus: String
+
+    public var output: String {
+        outputTail.visibleText
+    }
 
     public init(
         itemId: String,
         title: String,
         command: String,
         processId: String,
-        output: String,
+        outputTail: DaemonBoundedOutputTail,
         terminalStdin: String,
         exitCode: Int?,
         turnStatus: String
@@ -24,7 +28,7 @@ public struct DaemonCodexTerminalSurface: Equatable, Sendable {
         self.title = title
         self.command = command
         self.processId = processId
-        self.output = output
+        self.outputTail = outputTail
         self.terminalStdin = terminalStdin
         self.exitCode = exitCode
         self.turnStatus = turnStatus
@@ -46,7 +50,10 @@ public enum DaemonCodexTerminalSurfaceProjector {
             title: item.title,
             command: item.command ?? item.title,
             processId: item.processId ?? "",
-            output: item.text,
+            outputTail: DaemonBoundedOutputTailProjector.tail(
+                item.text,
+                policy: .inspectorOutput
+            ),
             terminalStdin: item.terminalStdin ?? "",
             exitCode: item.exitCode,
             turnStatus: item.turnStatus

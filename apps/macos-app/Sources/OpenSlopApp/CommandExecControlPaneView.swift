@@ -88,38 +88,25 @@ struct CommandExecControlPaneView: View {
             }
 
             if let surface, !surface.controlTrail.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("control trail")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-
-                    ScrollView {
-                        Text(surface.controlTrail)
-                            .font(.footnote.monospaced())
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(10)
-                    }
-                    .frame(minHeight: 84, idealHeight: 96)
-                    .background(.background, in: RoundedRectangle(cornerRadius: 10))
-                }
+                MonospacedTailBlockView(
+                    label: "control trail",
+                    tail: DaemonBoundedOutputTailProjector.tail(
+                        surface.controlTrail,
+                        policy: .controlTrail
+                    ),
+                    emptyPlaceholder: "control waiting...",
+                    minHeight: 84,
+                    idealHeight: 96
+                )
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Output")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-
-                ScrollView {
-                    Text(outputText)
-                        .font(.footnote.monospaced())
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                }
-                .frame(minHeight: 140, idealHeight: 180)
-                .background(.background, in: RoundedRectangle(cornerRadius: 10))
-            }
+            MonospacedTailBlockView(
+                label: "Output",
+                tail: outputTail,
+                emptyPlaceholder: "output waiting...",
+                minHeight: 140,
+                idealHeight: 180
+            )
 
             if let errorText, !errorText.isEmpty {
                 Text(errorText)
@@ -161,13 +148,15 @@ struct CommandExecControlPaneView: View {
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
     }
 
-    private var outputText: String {
+    private var outputTail: DaemonBoundedOutputTail {
         guard let surface else {
-            return "Запусти standalone exec, чтобы увидеть live output."
+            return DaemonBoundedOutputTailProjector.tail("", policy: .inspectorOutput)
         }
 
-        let output = surface.mergedOutput.trimmingCharacters(in: .whitespacesAndNewlines)
-        return output.isEmpty ? "output waiting..." : surface.mergedOutput
+        return DaemonBoundedOutputTailProjector.tail(
+            surface.mergedOutput,
+            policy: .inspectorOutput
+        )
     }
 
     private var errorText: String? {
