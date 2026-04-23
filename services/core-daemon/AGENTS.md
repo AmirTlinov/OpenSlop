@@ -12,6 +12,7 @@
 - bounded same-connection `command/exec` control proof lane из S04b.
 - read-only `git-review-snapshot` operation из S06a.
 - fail-closed `claude-runtime-status` operation из S05a.
+- real non-persistent `claude-turn-proof` operation из S05b.
 
 Текущая карта ответственности:
 - stdio transport между GUI и daemon;
@@ -28,3 +29,4 @@
 - честные error responses, когда session пережила restart раньше первого completed turn;
 - daemon-owned Git snapshot для Inspector: Swift не вызывает `git` сам, а только показывает typed response;
 - daemon-owned Claude runtime status: Swift не вызывает `claude` сам и не открывает Claude turn path без bridge proof.
+- daemon-owned Claude turn proof: Swift получает typed receipt через `claude-turn-proof`, но GUI chat/session lifecycle остаются закрыты.

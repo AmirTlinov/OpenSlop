@@ -871,7 +871,7 @@ struct WorkbenchRootView: View {
 
     private func startCodexBlockedMessage() -> String {
         if shellState.selectedProvider == "Claude" {
-            return "Claude runtime найден только как status boundary. Codex start не должен запускаться из Claude provider state."
+            return "Claude runtime найден как status/proof boundary. Codex start не должен запускаться из Claude provider state."
         }
 
         if isCodexBootstrapRunning {
@@ -883,7 +883,7 @@ struct WorkbenchRootView: View {
 
     private func turnSubmitBlockedMessage(for selectedSession: DaemonSessionSummary) -> String {
         if shellState.selectedProvider == "Claude" {
-            return "Claude runtime найден только как status boundary. Claude turns закрыты до следующего S05 slice."
+            return "Claude runtime найден как status/proof boundary. Claude chat закрыт до session lifecycle slice."
         }
 
         if isTurnStreaming {

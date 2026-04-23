@@ -1,21 +1,33 @@
 #!/usr/bin/env node
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 
 const BRIDGE = Object.freeze({
   name: 'claude-bridge',
-  version: '0.1.0',
+  version: '0.2.0',
   transport: 'stdio-json',
 });
 
+const DEFAULT_PROOF_MODEL = process.env.OPEN_SLOP_CLAUDE_PROOF_MODEL || 'haiku';
+const DEFAULT_PROOF_MAX_BUDGET_USD = process.env.OPEN_SLOP_CLAUDE_PROOF_MAX_BUDGET_USD || '0.05';
+const configuredProofTimeoutMs = Number(process.env.OPEN_SLOP_CLAUDE_PROOF_TIMEOUT_MS || '90000');
+const DEFAULT_PROOF_TIMEOUT_MS = Number.isFinite(configuredProofTimeoutMs) && configuredProofTimeoutMs > 0
+  ? configuredProofTimeoutMs
+  : 90000;
+
 const args = process.argv.slice(2);
-if (!isStatusCommand(args)) {
-  writeStatus(unavailable(`unsupported claude-bridge command: ${args.join(' ') || '<empty>'}`));
-  process.exitCode = 2;
+if (isStatusCommand(args)) {
+  writeJson(await runtimeStatus());
+} else if (isTurnProofCommand(args)) {
+  const result = await readStdinText(128 * 1024)
+    .then((prompt) => turnProof(prompt))
+    .catch((error) => turnProofUnavailable(`failed to read proof prompt from stdin: ${error.message}`));
+  writeJson(result);
+  process.exitCode = result.success ? 0 : 1;
 } else {
-  const status = await runtimeStatus();
-  writeStatus(status);
+  writeJson(unavailable(`unsupported claude-bridge command: ${args.join(' ') || '<empty>'}`));
+  process.exitCode = 2;
 }
 
 function isStatusCommand(args) {
@@ -31,8 +43,18 @@ function isStatusCommand(args) {
   return false;
 }
 
-function writeStatus(status) {
-  process.stdout.write(`${JSON.stringify(status)}\n`);
+function isTurnProofCommand(args) {
+  if (args.length === 1) {
+    return args[0] === 'turn-proof';
+  }
+  if (args.length === 2) {
+    return args[0] === 'turn-proof' && args[1] === '--json';
+  }
+  return false;
+}
+
+function writeJson(payload) {
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
 async function runtimeStatus() {
@@ -73,6 +95,20 @@ async function runtimeStatus() {
   };
 }
 
+async function turnProof(prompt) {
+  const cleanPrompt = String(prompt || '').trim();
+  if (!cleanPrompt) {
+    return turnProofUnavailable('missing proof prompt');
+  }
+
+  const status = await runtimeStatus();
+  if (!status.available || !status.binaryPath) {
+    return turnProofUnavailable('claude runtime unavailable', status, status.warnings);
+  }
+
+  return runClaudeTurn(status.binaryPath, cleanPrompt, Buffer.byteLength(cleanPrompt, 'utf8'));
+}
+
 function unavailable(reason, extraWarnings = []) {
   return {
     kind: 'claude_runtime_status',
@@ -98,6 +134,32 @@ function unavailable(reason, extraWarnings = []) {
       bridgeTracingHandoff: false,
     },
     helpSignals: [],
+    warnings: [reason, ...extraWarnings],
+  };
+}
+
+function turnProofUnavailable(reason, status = null, extraWarnings = []) {
+  return {
+    kind: 'claude_turn_proof_result',
+    runtime: 'claude-code-cli',
+    success: false,
+    runtimeAvailable: status?.available === true,
+    bridge: BRIDGE,
+    model: null,
+    sessionId: null,
+    resultText: '',
+    assistantText: '',
+    eventCount: 0,
+    eventTypes: [],
+    toolUseCount: 0,
+    malformedEventCount: 0,
+    sessionPersistence: 'disabled',
+    totalCostUsd: null,
+    durationMs: null,
+    exitCode: null,
+    signal: null,
+    timedOut: false,
+    promptBytes: 0,
     warnings: [reason, ...extraWarnings],
   };
 }
@@ -171,6 +233,175 @@ function capabilitiesFromSignals(signals) {
   };
 }
 
+function runClaudeTurn(binaryPath, prompt, promptBytes) {
+  return new Promise((resolve) => {
+    const argv = [
+      '-p',
+      '--verbose',
+      '--output-format',
+      'stream-json',
+      '--input-format',
+      'text',
+      '--tools',
+      '',
+      '--permission-mode',
+      'dontAsk',
+      '--no-session-persistence',
+      '--model',
+      DEFAULT_PROOF_MODEL,
+      '--max-budget-usd',
+      DEFAULT_PROOF_MAX_BUDGET_USD,
+    ];
+
+    const eventTypes = new Set();
+    const warnings = [];
+    const assistantTextParts = [];
+    let eventCount = 0;
+    let toolUseCount = 0;
+    let malformedEventCount = 0;
+    let sessionId = null;
+    let model = null;
+    let resultEvent = null;
+    let stderr = '';
+    let stdoutBuffer = '';
+    let timedOut = false;
+
+    const child = spawn(binaryPath, argv, {
+      cwd: process.cwd(),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      warnings.push(`claude turn proof timed out after ${DEFAULT_PROOF_TIMEOUT_MS}ms`);
+      child.kill('SIGTERM');
+    }, DEFAULT_PROOF_TIMEOUT_MS);
+
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      stdoutBuffer += chunk;
+      let newlineIndex;
+      while ((newlineIndex = stdoutBuffer.indexOf('\n')) >= 0) {
+        const line = stdoutBuffer.slice(0, newlineIndex).trim();
+        stdoutBuffer = stdoutBuffer.slice(newlineIndex + 1);
+        if (line) {
+          handleStreamLine(line);
+        }
+      }
+    });
+
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+      if (stderr.length > 16_384) {
+        stderr = stderr.slice(-16_384);
+      }
+    });
+
+    child.on('error', (error) => {
+      warnings.push(`failed to launch claude turn: ${error.message}`);
+    });
+
+    child.stdin.on('error', (error) => {
+      warnings.push(`failed to write proof prompt to claude stdin: ${error.message}`);
+    });
+
+    child.on('close', (code, signal) => {
+      clearTimeout(timeout);
+      const leftover = stdoutBuffer.trim();
+      if (leftover) {
+        handleStreamLine(leftover);
+      }
+
+      if (signal) {
+        warnings.push(`claude exited with signal ${signal}`);
+      }
+      if (stderr.trim()) {
+        warnings.push(`stderr: ${stderr.trim()}`);
+      }
+
+      const assistantText = assistantTextParts.join('').trim();
+      const resultText = clean(resultEvent?.result || assistantText);
+      const resultSuccess = resultEvent?.subtype === 'success' && resultEvent?.is_error !== true;
+      const success =
+        code === 0 &&
+        resultSuccess &&
+        resultText.length > 0 &&
+        !timedOut &&
+        malformedEventCount === 0 &&
+        toolUseCount === 0;
+
+      resolve({
+        kind: 'claude_turn_proof_result',
+        runtime: 'claude-code-cli',
+        success,
+        runtimeAvailable: true,
+        bridge: BRIDGE,
+        model: resultEvent?.modelUsage ? Object.keys(resultEvent.modelUsage)[0] : model,
+        sessionId: resultEvent?.session_id || sessionId,
+        resultText,
+        assistantText,
+        eventCount,
+        eventTypes: Array.from(eventTypes).sort(),
+        toolUseCount,
+        malformedEventCount,
+        sessionPersistence: 'disabled',
+        totalCostUsd: typeof resultEvent?.total_cost_usd === 'number' ? resultEvent.total_cost_usd : null,
+        durationMs: typeof resultEvent?.duration_ms === 'number' ? resultEvent.duration_ms : null,
+        exitCode: code,
+        signal,
+        timedOut,
+        promptBytes,
+        warnings,
+      });
+    });
+
+    child.stdin.end(`${prompt}\n`);
+
+    function handleStreamLine(line) {
+      eventCount += 1;
+      let event;
+      try {
+        event = JSON.parse(line);
+      } catch (error) {
+        malformedEventCount += 1;
+        warnings.push(`invalid stream-json line: ${error.message}`);
+        return;
+      }
+
+      const type = event.type || 'unknown';
+      const subtype = event.subtype ? `:${event.subtype}` : '';
+      eventTypes.add(`${type}${subtype}`);
+
+      if (event.session_id && !sessionId) {
+        sessionId = event.session_id;
+      }
+      if (event.model && !model) {
+        model = event.model;
+      }
+      if (event.type === 'system' && event.model) {
+        model = event.model;
+      }
+      if (event.type === 'result') {
+        resultEvent = event;
+      }
+      if (event.type === 'assistant' && event.message?.model) {
+        model = event.message.model;
+      }
+      if (event.type === 'assistant' && Array.isArray(event.message?.content)) {
+        for (const item of event.message.content) {
+          if (item?.type === 'tool_use') {
+            toolUseCount += 1;
+          }
+          if (item?.type === 'text' && typeof item.text === 'string') {
+            assistantTextParts.push(item.text);
+          }
+        }
+      }
+    }
+  });
+}
+
 function run(command, args, timeoutMs, options = {}) {
   return new Promise((resolve) => {
     execFile(command, args, { timeout: timeoutMs, maxBuffer: 1024 * 1024, ...options }, (error, stdout, stderr) => {
@@ -180,6 +411,24 @@ function run(command, args, timeoutMs, options = {}) {
       }
       resolve({ ok: true, stdout: stdout ?? '', stderr: stderr ?? '', message: '' });
     });
+  });
+}
+
+function readStdinText(maxBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    process.stdin.on('data', (chunk) => {
+      total += chunk.length;
+      if (total > maxBytes) {
+        reject(new Error(`stdin payload exceeds ${maxBytes} bytes`));
+        process.stdin.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    process.stdin.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    process.stdin.on('error', reject);
   });
 }
 

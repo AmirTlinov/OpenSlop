@@ -150,7 +150,7 @@ struct WorkbenchStartSurfaceView: View {
     }
 
     private var startSessionButtonTitle: String {
-        selectedProvider == "Claude" ? "Claude turns закрыты в S05a" : "Запустить живую Codex session"
+        selectedProvider == "Claude" ? "Claude chat закрыт; S05b только probe" : "Запустить живую Codex session"
     }
 
     private var claudeStatusLine: String {
@@ -167,7 +167,7 @@ struct WorkbenchStartSurfaceView: View {
         }
 
         if claudeRuntimeStatus.available {
-            return "\(claudeRuntimeStatus.versionLabel) найден. S05a показывает status boundary; Claude turns ещё закрыты."
+            return "\(claudeRuntimeStatus.versionLabel) найден. S05b proof доступен только как probe; Claude chat ещё закрыт."
         }
 
         return "Claude runtime недоступен. GUI держит этот provider fail-closed."

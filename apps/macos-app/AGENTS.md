@@ -21,6 +21,7 @@ macos-app
    │  ├─ CodexTerminalSurface.swift
    │  ├─ GitReviewSnapshot.swift
    │  ├─ ClaudeRuntimeStatus.swift
+   │  ├─ ClaudeTurnProofResult.swift
    │  ├─ RepoRootLocator.swift
    │  └─ CoreDaemonClient.swift
    ├─ OpenSlopApp/
@@ -75,7 +76,9 @@ macos-app
    │  └─ main.swift
    ├─ OpenSlopGitReviewProbe/
    │  └─ main.swift
-   └─ OpenSlopClaudeStatusProbe/
+   ├─ OpenSlopClaudeStatusProbe/
+   │  └─ main.swift
+   └─ OpenSlopClaudeTurnProofProbe/
       └─ main.swift
 ```
 
@@ -125,3 +128,4 @@ macos-app
 - `InspectorPanelView` now has Summary / Verify / Browser tabs. Browser and Verify tabs are honest planned/pre-harness surfaces, not live feature claims.
 
 - `WorkbenchCore/ClaudeRuntimeStatus.swift`, `ClaudeRuntimeStatusView.swift` и `OpenSlopClaudeStatusProbe` materialize S05a: GUI показывает только real Claude runtime status boundary и не открывает fake Claude turns.
+- `WorkbenchCore/ClaudeTurnProofResult.swift` и `OpenSlopClaudeTurnProofProbe` materialize S05b: один реальный non-persistent Claude turn проходит через daemon. GUI chat для Claude всё ещё закрыт.

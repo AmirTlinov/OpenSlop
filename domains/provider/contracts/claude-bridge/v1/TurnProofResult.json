@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ClaudeTurnProofResult",
+  "type": "object",
+  "required": [
+    "kind",
+    "runtime",
+    "success",
+    "runtimeAvailable",
+    "bridge",
+    "model",
+    "sessionId",
+    "resultText",
+    "assistantText",
+    "eventCount",
+    "eventTypes",
+    "toolUseCount",
+    "malformedEventCount",
+    "sessionPersistence",
+    "totalCostUsd",
+    "durationMs",
+    "exitCode",
+    "signal",
+    "timedOut",
+    "promptBytes",
+    "warnings"
+  ],
+  "properties": {
+    "kind": { "const": "claude_turn_proof_result" },
+    "runtime": { "const": "claude-code-cli" },
+    "success": { "type": "boolean" },
+    "runtimeAvailable": { "type": "boolean" },
+    "bridge": {
+      "type": "object",
+      "required": ["name", "version", "transport"],
+      "properties": {
+        "name": { "const": "claude-bridge" },
+        "version": { "const": "0.2.0" },
+        "transport": { "const": "stdio-json" }
+      },
+      "additionalProperties": false
+    },
+    "model": { "type": ["string", "null"] },
+    "sessionId": { "type": ["string", "null"] },
+    "resultText": { "type": "string" },
+    "assistantText": { "type": "string" },
+    "eventCount": { "type": "integer", "minimum": 0 },
+    "eventTypes": { "type": "array", "items": { "type": "string" } },
+    "toolUseCount": { "type": "integer", "minimum": 0 },
+    "malformedEventCount": { "type": "integer", "minimum": 0 },
+    "sessionPersistence": { "const": "disabled" },
+    "totalCostUsd": { "type": ["number", "null"] },
+    "durationMs": { "type": ["integer", "null"], "minimum": 0 },
+    "exitCode": { "type": ["integer", "null"] },
+    "signal": { "type": ["string", "null"] },
+    "timedOut": { "type": "boolean" },
+    "promptBytes": { "type": "integer", "minimum": 0 },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}

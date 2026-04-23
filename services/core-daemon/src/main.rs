@@ -1,6 +1,6 @@
 use git_domain::load_git_review_snapshot;
 use provider_domain::{
-    ClaudeRuntimeStatus, CodexApprovalDecision, CodexApprovalRequest,
+    ClaudeRuntimeStatus, ClaudeTurnProofResult, CodexApprovalDecision, CodexApprovalRequest,
     CodexCommandExecControlRequest, CodexCommandExecOutputDelta, CodexCommandExecOutputStream,
     CodexCommandExecParams, CodexCommandExecResizeParams, CodexCommandExecResult,
     CodexCommandExecTerminalSize, CodexCommandExecTerminateParams, CodexCommandExecWriteParams,
@@ -17,11 +17,12 @@ use std::env;
 use std::io::{self, BufRead, Write};
 use std::os::fd::{AsRawFd, RawFd};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 const COMMAND_EXEC_CONTROL_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
+const CLAUDE_TURN_PROOF_PROMPT: &str = "Reply with exactly OPENSLOP_CLAUDE_OK and nothing else.";
 
 static CODEX_RUNTIME_REGISTRY: LazyLock<Mutex<CodexRuntimeRegistry>> =
     LazyLock::new(|| Mutex::new(CodexRuntimeRegistry::new()));
@@ -147,6 +148,14 @@ fn main() {
         return;
     }
 
+    if args.as_slice() == ["--claude-turn-proof"] {
+        match claude_turn_proof_json(&repo_root, CLAUDE_TURN_PROOF_PROMPT, true) {
+            Ok(payload) => println!("{payload}"),
+            Err(error) => exit_with_error(error),
+        }
+        return;
+    }
+
     if args.len() == 3 && args[0] == "--read-codex-transcript" {
         match codex_read_transcript_json(&repo_root, &args[1], true) {
             Ok(payload) => println!("{payload}"),
@@ -196,7 +205,7 @@ fn main() {
     }
 
     eprintln!(
-        "OpenSlop core-daemon supports: --heartbeat | --query session-list | --start-codex-session | --git-review-snapshot | --claude-runtime-status | --read-codex-transcript <session-id> _ | --submit-codex-turn <session-id> <input> | --serve-stdio | --reset-session-store | --upsert-proof-session | --print-session-store-path"
+        "OpenSlop core-daemon supports: --heartbeat | --query session-list | --start-codex-session | --git-review-snapshot | --claude-runtime-status | --claude-turn-proof | --read-codex-transcript <session-id> _ | --submit-codex-turn <session-id> <input> | --serve-stdio | --reset-session-store | --upsert-proof-session | --print-session-store-path"
     );
 }
 
@@ -239,8 +248,21 @@ fn claude_runtime_status_json(repo_root: &Path, pretty: bool) -> Result<String, 
     serialize_payload(&status, pretty)
 }
 
+fn claude_turn_proof_json(
+    repo_root: &Path,
+    input_text: &str,
+    pretty: bool,
+) -> Result<String, String> {
+    let proof = load_claude_turn_proof(repo_root, input_text);
+    serialize_payload(&proof, pretty)
+}
+
+fn claude_bridge_script(repo_root: &Path) -> PathBuf {
+    repo_root.join("services/claude-bridge/bin/claude-bridge.mjs")
+}
+
 fn load_claude_runtime_status(repo_root: &Path) -> ClaudeRuntimeStatus {
-    let bridge_script = repo_root.join("services/claude-bridge/bin/claude-bridge.mjs");
+    let bridge_script = claude_bridge_script(repo_root);
     if !bridge_script.is_file() {
         return ClaudeRuntimeStatus::unavailable(format!(
             "claude-bridge script missing: {}",
@@ -291,6 +313,87 @@ fn load_claude_runtime_status(repo_root: &Path) -> ClaudeRuntimeStatus {
         )),
         Err(error) => ClaudeRuntimeStatus::unavailable(format!(
             "claude-bridge returned invalid runtime JSON: {error}; stdout={stdout}"
+        )),
+    }
+}
+
+fn load_claude_turn_proof(repo_root: &Path, input_text: &str) -> ClaudeTurnProofResult {
+    let bridge_script = claude_bridge_script(repo_root);
+    if !bridge_script.is_file() {
+        return ClaudeTurnProofResult::unavailable(format!(
+            "claude-bridge script missing: {}",
+            bridge_script.display()
+        ));
+    }
+
+    if input_text.trim().is_empty() {
+        return ClaudeTurnProofResult::unavailable("missing Claude turn proof prompt");
+    }
+
+    let mut child = match Command::new("node")
+        .arg(&bridge_script)
+        .args(["turn-proof", "--json"])
+        .current_dir(repo_root)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(error) => {
+            return ClaudeTurnProofResult::unavailable(format!(
+                "failed to launch claude turn proof via node: {error}"
+            ));
+        }
+    };
+
+    match child.stdin.as_mut() {
+        Some(stdin) => {
+            if let Err(error) = stdin.write_all(input_text.as_bytes()) {
+                return ClaudeTurnProofResult::unavailable(format!(
+                    "failed to write Claude proof prompt to bridge stdin: {error}"
+                ));
+            }
+        }
+        None => {
+            return ClaudeTurnProofResult::unavailable("claude-bridge stdin unavailable");
+        }
+    }
+
+    let output = match child.wait_with_output() {
+        Ok(output) => output,
+        Err(error) => {
+            return ClaudeTurnProofResult::unavailable(format!(
+                "failed to wait for claude turn proof: {error}"
+            ));
+        }
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
+    if stdout.is_empty() {
+        let reason = if stderr.is_empty() {
+            format!(
+                "claude turn proof exited without JSON, status={}",
+                output.status
+            )
+        } else {
+            format!(
+                "claude turn proof exited without JSON, status={}, stderr={stderr}",
+                output.status
+            )
+        };
+        return ClaudeTurnProofResult::unavailable(reason);
+    }
+
+    match ClaudeTurnProofResult::from_bridge_json(&stdout) {
+        Ok(proof) if output.status.success() => proof,
+        Ok(proof) => {
+            proof.with_warning(format!("claude turn proof exit status: {}", output.status))
+        }
+        Err(error) => ClaudeTurnProofResult::unavailable(format!(
+            "claude-bridge returned invalid turn proof JSON: {error}; stdout={stdout}"
         )),
     }
 }
@@ -898,6 +1001,16 @@ fn handle_parsed_stdio_request(request: StdioRequest, repo_root: &Path) -> Strin
             Ok(payload) => payload,
             Err(message) => serialize_error(message),
         },
+        "claude-turn-proof" => {
+            let input_text = request
+                .input_text
+                .as_deref()
+                .unwrap_or(CLAUDE_TURN_PROOF_PROMPT);
+            match claude_turn_proof_json(repo_root, input_text, false) {
+                Ok(payload) => payload,
+                Err(message) => serialize_error(message),
+            }
+        }
         "codex-start-session" => match codex_start_session_json(repo_root, false) {
             Ok(payload) => payload,
             Err(message) => serialize_error(message),

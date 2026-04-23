@@ -73,3 +73,8 @@ provider
   - `services/claude-bridge/bin/claude-bridge.mjs status --json` checks local Claude Code CLI;
   - `domains/provider/contracts/claude-bridge/v1/RuntimeStatus.json` pins the status shape;
   - current capabilities are discovery/CLI signals only, while turn streaming, session mirror, native approvals and tracing remain false.
+- S05b adds the first real Claude turn proof without opening GUI chat:
+  - `services/claude-bridge/bin/claude-bridge.mjs turn-proof --json` reads prompt stdin and runs one non-persistent Claude CLI turn;
+  - `domains/provider/contracts/claude-bridge/v1/TurnProofResult.json` pins the receipt shape;
+  - `core-daemon` exposes `claude-turn-proof`, and Swift sees it only through `OpenSlopClaudeTurnProofProbe`;
+  - session mirror, native approvals, platform tools and tracing remain out of scope.

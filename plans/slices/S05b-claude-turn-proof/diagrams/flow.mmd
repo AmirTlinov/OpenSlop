@@ -1,0 +1,10 @@
+flowchart LR
+    Probe[OpenSlopClaudeTurnProofProbe] --> CoreClient[WorkbenchCore\nCoreDaemonClient]
+    CoreClient --> Daemon[core-daemon\nclaude-turn-proof]
+    Daemon --> Bridge[claude-bridge.mjs\nturn-proof --json]
+    Bridge --> CLI[Claude Code CLI\nstream-json + stdin]
+    CLI --> Receipt[ClaudeTurnProofResult\nreal marker receipt]
+    Receipt --> Bridge
+    Bridge --> Daemon
+    Daemon --> CoreClient
+    CoreClient --> Probe

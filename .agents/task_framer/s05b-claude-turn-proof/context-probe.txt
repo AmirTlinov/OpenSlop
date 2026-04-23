@@ -1,0 +1,15 @@
+S05b cheap probe summary
+
+Repo probe:
+- S05a already had `claude-runtime-status` through `claude-bridge -> core-daemon -> WorkbenchCore -> GUI`.
+- `CoreDaemonClient` already has a long-lived stdio transport, so S05b can add a receipt-only operation without a GUI chat action.
+- `OpenSlopClaudeStatusProbe` is the closest pattern for a Swift proof executable.
+
+Live Claude CLI probe:
+- Command shape that worked:
+  `printf 'Reply with exactly OPENSLOP_CLAUDE_OK and nothing else.\n' | claude -p --verbose --output-format stream-json --input-format text --tools "" --permission-mode dontAsk --no-session-persistence --model haiku --max-budget-usd 0.05`
+- Result: exit `0`, final/result text `OPENSLOP_CLAUDE_OK`.
+- Event types observed: `system:init`, `rate_limit_event`, `assistant`, `result:success`.
+- Model observed: `claude-haiku-4-5-20251001`.
+- Important constraint: `stream-json` with `-p/--print` requires `--verbose`.
+- Important constraint: prompt must go through stdin, not argv.
