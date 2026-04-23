@@ -19,6 +19,7 @@
 | `S04e-command-exec-control-pane` | Guided standalone `command/exec` proof pane in inspector | S04c | done |
 | `S04f-command-exec-control-timeout-law` | Fail-closed timeout for missing `write/terminate` follow-up in standalone control lane | S04e | done |
 | `S04g-command-exec-bounded-interactive-stdin` | Bounded standalone `write + closeStdin + terminate` proof lane with interactive stdin trail | S04f | done |
+| `S04h-live-transcript-control-witness` | Raw witness for live transcript `processId -> command/exec/write` feasibility | S04d | done |
 | `S05-claude-runtime` | Claude runtime через bridge | S02 | planned |
 | `S06-git-review-artifacts` | Diff, artifacts, worktrees | S02 | planned |
 | `S07-browser-preview` | Встроенный native preview browser | S01,S02 | planned |

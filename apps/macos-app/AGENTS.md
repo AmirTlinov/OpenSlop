@@ -66,6 +66,7 @@ macos-app
 - `OpenSlopCommandExecControlProbe` доказывает следующий law: one same-connection streaming exec принимает follow-up `write`, echo'ит `PING`, потом завершается через follow-up `terminate`.
 - `WorkbenchCore/CodexTerminalSurface.swift` materialize'ит первый read-only/live-only terminal surface только из streamed transcript, когда есть `processId` и raw `terminalStdin`.
 - `TerminalPaneView` показывает этот surface в inspector как честный live-only pane без stdin control, resize и reconnect claims.
+- Отдельный raw witness на provider boundary уже показал текущий upstream reject для `live processId -> command/exec/write`, поэтому transcript terminal pane остаётся read-only не по осторожности, а по доказанной границе.
 - `WorkbenchCore/CodexCommandExecControlSurface.swift` держит standalone interactive proof truth: live output, stable `processId`, stage `awaitingControl`, `stdinTrail`, final exit.
 - `CommandExecControlPaneView` показывает bounded standalone interactive proof lane: output-paced `write`, `close stdin`, `terminate`, плюс честный `stdin trail`.
 - `OpenSlopCommandExecControlSurfaceProbe` доказывает, что GUI surface и probe share one same-connection proof contour с `READY -> PING -> terminate`.

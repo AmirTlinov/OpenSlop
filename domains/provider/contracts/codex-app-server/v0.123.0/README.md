@@ -84,3 +84,16 @@ codex app-server generate-json-schema --out /tmp/openslop-codex-schema
   - доказан same-connection `write` и `terminate`;
   - `resize` пока только pinned в contract subset и явно не объявлен доказанным surface;
   - control dialogue сейчас bounded и proof-owned, без reconnect и без background PTY registry claims.
+
+Важная S04h-specific реальность:
+- добавлен raw witness:
+  - `domains/provider/contracts/codex-app-server/v0.123.0/witnesses/live_transcript_control_witness.py`
+  - `make smoke-codex-live-transcript-control-witness`
+- он проверяет уже не presence сигнала, а более узкий вопрос: принимает ли live `processId` из `item/commandExecution/terminalInteraction` follow-up `command/exec/write` на той же связи.
+- текущий живой smoke на 2026-04-23 дал явный upstream reject:
+  - `code=-32600 message=no active command/exec for process id "<live-process-id>"`
+- в этом же smoke raw `terminalInteraction` пришёл с payload'ами `""` и `"\x03"`, а command item завершился `KeyboardInterrupt`, что ещё раз показывает: это control traffic, а не готовый user-facing prompt surface.
+- это важная граница:
+  - live transcript `processId` сейчас не является честным мостом к standalone `command/exec/write`;
+  - read-only/live-only terminal pane остаётся правдивым потолком текущего transcript contour;
+  - любой будущий live stdin bridge требует другого upstream path или нового отдельного proof.

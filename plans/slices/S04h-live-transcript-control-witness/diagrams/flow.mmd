@@ -1,0 +1,9 @@
+flowchart LR
+    Witness[raw witness] --> AppServer[codex app-server]
+    AppServer -->|turn/start| LiveTurn[live commandExecution]
+    LiveTurn -->|item/commandExecution/terminalInteraction| ProcessId[live processId]
+    ProcessId -->|command/exec/write| WriteAttempt[same-connection write attempt]
+    WriteAttempt --> Verdict{upstream verdict}
+    Verdict -->|confirmed| Future[bounded transcript control bridge later]
+    Verdict -->|rejected| Boundary[read-only terminal pane remains honest]
+    Verdict -->|ambiguous| Stop[no product bridge claim]

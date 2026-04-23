@@ -55,5 +55,10 @@ provider
   - он идёт напрямую в `codex app-server` по stdio и не проходит через provider/core-daemon/gui;
   - он честно доказывает upstream presence этого сигнала, если smoke его увидел;
   - текущий продуктовый contour всё ещё не materialize'ит этот сигнал в PTY surface.
+- Следующий raw witness на той же boundary проверяет уже более узкий вопрос про control bridge:
+  - `domains/provider/contracts/codex-app-server/v0.123.0/witnesses/live_transcript_control_witness.py`;
+  - он берёт live `processId` из `item/commandExecution/terminalInteraction` и пытается вызвать `command/exec/write` на той же связи;
+  - текущий живой smoke на `codex-cli 0.123.0` получил явный upstream reject: `no active command/exec for process id ...`;
+  - значит read-only transcript terminal pane пока остаётся честным потолком этого contour, и live stdin bridge сюда нельзя молча дотягивать.
 - Важная граница: до первого completed turn thread ещё не materialized на диск.
 - Ещё одна важная граница: на этой машине default Codex thread стартует с `dangerFullAccess`, поэтому approval-enabled turn для живого proof сейчас делает turn-level override на `approvalPolicy = untrusted` и `sandboxPolicy = readOnly`.
