@@ -4,15 +4,19 @@ import WorkbenchCore
 struct InspectorPanelView: View {
     let cards: [InspectorCardSeed]
     let terminalSurface: DaemonCodexTerminalSurface?
-    let commandExecArgvText: String
+    @Binding var commandExecProofMode: CommandExecProofMode
     @Binding var commandExecStdinText: String
     let commandExecSurface: DaemonCodexCommandExecControlSurface?
     let onRunCommandExec: () -> Void
+    let onSendCommandExecResize: () -> Void
     let onSendCommandExecWrite: () -> Void
+    let onSendCommandExecWriteAndClose: () -> Void
     let onCloseCommandExecStdin: () -> Void
     let onTerminateCommandExec: () -> Void
     let isRunCommandExecDisabled: Bool
+    let isCommandExecResizeDisabled: Bool
     let isCommandExecWriteDisabled: Bool
+    let isCommandExecWriteAndCloseDisabled: Bool
     let isCommandExecCloseStdinDisabled: Bool
     let isCommandExecTerminateDisabled: Bool
 
@@ -44,15 +48,19 @@ struct InspectorPanelView: View {
                     }
 
                     CommandExecControlPaneView(
-                        argvText: commandExecArgvText,
+                        proofMode: $commandExecProofMode,
                         stdinText: $commandExecStdinText,
                         surface: commandExecSurface,
                         onRun: onRunCommandExec,
+                        onSendResize: onSendCommandExecResize,
                         onSendWrite: onSendCommandExecWrite,
+                        onSendWriteAndClose: onSendCommandExecWriteAndClose,
                         onCloseStdin: onCloseCommandExecStdin,
                         onTerminate: onTerminateCommandExec,
                         isRunDisabled: isRunCommandExecDisabled,
+                        isResizeDisabled: isCommandExecResizeDisabled,
                         isWriteDisabled: isCommandExecWriteDisabled,
+                        isWriteAndCloseDisabled: isCommandExecWriteAndCloseDisabled,
                         isCloseStdinDisabled: isCommandExecCloseStdinDisabled,
                         isTerminateDisabled: isCommandExecTerminateDisabled
                     )

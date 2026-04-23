@@ -89,11 +89,12 @@ struct WorkbenchRootView: View {
     @State private var transcript: DaemonCodexTranscript?
     @State private var pendingApproval: DaemonCodexApprovalRequest?
     @State private var approvalContinuation: CheckedContinuation<DaemonCodexApprovalDecision, Never>?
-    @State private var commandExecArgvText = DaemonCodexCommandExecProofCommand.boundedInteractiveEcho.joined(separator: "\n")
-    @State private var commandExecStdinText = "PING\n"
+    @State private var commandExecProofMode: CommandExecProofMode = .interactiveStdin
+    @State private var commandExecStdinText = DaemonCodexCommandExecProofCommand.defaultInteractiveInput
     @State private var commandExecSurface: DaemonCodexCommandExecControlSurface?
     @State private var commandExecContinuation: CheckedContinuation<DaemonCodexCommandExecControlRequest?, Never>?
     @State private var commandExecAllowsMoreControls = false
+    @State private var commandExecResizeSent = false
 
     private var selectedSession: DaemonSessionSummary? {
         sessions.first(where: { $0.id == selectedSessionID }) ?? sessions.first
@@ -124,8 +125,12 @@ struct WorkbenchRootView: View {
         }
     }
 
+    private var commandExecCommand: [String] {
+        commandExecProofMode.command
+    }
+
     private var canRunCommandExec: Bool {
-        !parsedCommandExecArgv().isEmpty && !isCommandExecActive
+        !commandExecCommand.isEmpty && !isCommandExecActive
     }
 
     private var isCommandExecActive: Bool {
@@ -149,6 +154,31 @@ struct WorkbenchRootView: View {
         return commandExecSurface.stage == .awaitingControl
             && commandExecContinuation != nil
             && commandExecAllowsMoreControls
+            && commandExecProofMode == .interactiveStdin
+    }
+
+    private var canSendCommandExecResize: Bool {
+        guard let commandExecSurface else {
+            return false
+        }
+
+        return commandExecSurface.stage == .awaitingControl
+            && commandExecContinuation != nil
+            && commandExecAllowsMoreControls
+            && commandExecProofMode == .ptyResize
+            && !commandExecResizeSent
+    }
+
+    private var canSendCommandExecWriteAndClose: Bool {
+        guard let commandExecSurface else {
+            return false
+        }
+
+        return commandExecSurface.stage == .awaitingControl
+            && commandExecContinuation != nil
+            && commandExecAllowsMoreControls
+            && commandExecProofMode == .ptyResize
+            && commandExecResizeSent
     }
 
     private var canCloseCommandExecStdin: Bool {
@@ -159,6 +189,7 @@ struct WorkbenchRootView: View {
         return commandExecSurface.stage == .awaitingControl
             && commandExecContinuation != nil
             && commandExecAllowsMoreControls
+            && commandExecProofMode == .interactiveStdin
     }
 
     private var canTerminateCommandExec: Bool {
@@ -169,6 +200,7 @@ struct WorkbenchRootView: View {
         return commandExecSurface.stage == .awaitingControl
             && commandExecContinuation != nil
             && commandExecAllowsMoreControls
+            && commandExecProofMode == .interactiveStdin
     }
 
     var body: some View {
@@ -204,17 +236,21 @@ struct WorkbenchRootView: View {
                             pendingApproval: pendingApproval
                         ),
                         terminalSurface: DaemonCodexTerminalSurfaceProjector.liveSurface(from: transcript),
-                        commandExecArgvText: commandExecArgvText,
+                        commandExecProofMode: $commandExecProofMode,
                         commandExecStdinText: $commandExecStdinText,
                         commandExecSurface: commandExecSurface,
                         onRunCommandExec: {
                             Task { await runCommandExecControl() }
                         },
+                        onSendCommandExecResize: resolveCommandExecResize,
                         onSendCommandExecWrite: resolveCommandExecWrite,
+                        onSendCommandExecWriteAndClose: resolveCommandExecWriteAndClose,
                         onCloseCommandExecStdin: resolveCommandExecCloseStdin,
                         onTerminateCommandExec: resolveCommandExecTerminate,
                         isRunCommandExecDisabled: !canRunCommandExec,
+                        isCommandExecResizeDisabled: !canSendCommandExecResize,
                         isCommandExecWriteDisabled: !canSendCommandExecWrite,
+                        isCommandExecWriteAndCloseDisabled: !canSendCommandExecWriteAndClose,
                         isCommandExecCloseStdinDisabled: !canCloseCommandExecStdin,
                         isCommandExecTerminateDisabled: !canTerminateCommandExec
                     )
@@ -257,6 +293,16 @@ struct WorkbenchRootView: View {
         }
         .task(id: selectedSessionID) {
             await loadTranscriptForSelection(force: true)
+        }
+        .onChange(of: commandExecProofMode) { _, newMode in
+            guard !isCommandExecActive else {
+                return
+            }
+            commandExecStdinText = newMode.defaultStdin
+            commandExecSurface = nil
+            commandExecContinuation = nil
+            commandExecAllowsMoreControls = false
+            commandExecResizeSent = false
         }
         .sheet(item: $pendingApproval) { approval in
             ApprovalSheetView(
@@ -382,7 +428,7 @@ struct WorkbenchRootView: View {
 
     @MainActor
     private func runCommandExecControl() async {
-        let argv = parsedCommandExecArgv()
+        let argv = commandExecCommand
         guard !argv.isEmpty else {
             commandExecSurface = DaemonCodexCommandExecControlSurface(
                 command: [],
@@ -390,7 +436,7 @@ struct WorkbenchRootView: View {
                 mergedOutput: "",
                 stdout: "",
                 stderr: "",
-                stdinTrail: "",
+                controlTrail: "",
                 exitCode: nil,
                 stage: .failed,
                 lastError: "Нужен хотя бы один argv line."
@@ -401,6 +447,8 @@ struct WorkbenchRootView: View {
         let processId = "openslop-command-exec-ui-\(UUID().uuidString)"
         commandExecContinuation = nil
         commandExecAllowsMoreControls = true
+        commandExecResizeSent = false
+        commandExecStdinText = commandExecProofMode.defaultStdin
         commandExecSurface = DaemonCodexCommandExecControlSurfaceProjector.start(
             command: argv,
             processId: processId
@@ -409,7 +457,11 @@ struct WorkbenchRootView: View {
         do {
             let result = try await client.streamCodexCommandWithControl(
                 command: argv,
-                processId: processId
+                processId: processId,
+                tty: commandExecProofMode == .ptyResize,
+                size: commandExecProofMode == .ptyResize
+                    ? DaemonCodexCommandExecProofCommand.ptyResizeInitialSize
+                    : nil
             ) { outputEvent in
                 if await MainActor.run(body: { self.commandExecAllowsMoreControls }) {
                     await MainActor.run {
@@ -444,6 +496,7 @@ struct WorkbenchRootView: View {
             }
             commandExecContinuation = nil
             commandExecAllowsMoreControls = false
+            commandExecResizeSent = false
         } catch {
             if let commandExecSurface {
                 self.commandExecSurface = DaemonCodexCommandExecControlSurfaceProjector.fail(
@@ -457,7 +510,7 @@ struct WorkbenchRootView: View {
                     mergedOutput: "",
                     stdout: "",
                     stderr: "",
-                    stdinTrail: "",
+                    controlTrail: "",
                     exitCode: nil,
                     stage: .failed,
                     lastError: error.localizedDescription
@@ -465,6 +518,7 @@ struct WorkbenchRootView: View {
             }
             commandExecContinuation = nil
             commandExecAllowsMoreControls = false
+            commandExecResizeSent = false
         }
     }
 
@@ -503,6 +557,62 @@ struct WorkbenchRootView: View {
     }
 
     @MainActor
+    private func resolveCommandExecResize() {
+        guard
+            let commandExecSurface,
+            commandExecSurface.stage == .awaitingControl,
+            let continuation = commandExecContinuation
+        else {
+            return
+        }
+
+        let targetSize = DaemonCodexCommandExecProofCommand.ptyResizeTargetSize
+        commandExecContinuation = nil
+        commandExecAllowsMoreControls = true
+        commandExecResizeSent = true
+        self.commandExecSurface = DaemonCodexCommandExecControlSurfaceProjector.markResize(
+            size: targetSize,
+            on: commandExecSurface
+        )
+        continuation.resume(
+            returning: .resize(
+                DaemonCodexCommandExecResizeRequest(
+                    processId: commandExecSurface.processId,
+                    size: targetSize
+                )
+            )
+        )
+    }
+
+    @MainActor
+    private func resolveCommandExecWriteAndClose() {
+        guard
+            let commandExecSurface,
+            commandExecSurface.stage == .awaitingControl,
+            let continuation = commandExecContinuation
+        else {
+            return
+        }
+
+        commandExecContinuation = nil
+        commandExecAllowsMoreControls = false
+        self.commandExecSurface =
+            DaemonCodexCommandExecControlSurfaceProjector.markWriteAndCloseStdin(
+                raw: commandExecStdinText,
+                on: commandExecSurface
+            )
+        continuation.resume(
+            returning: .write(
+                DaemonCodexCommandExecWriteRequest(
+                    processId: commandExecSurface.processId,
+                    deltaBase64: Data(commandExecStdinText.utf8).base64EncodedString(),
+                    closeStdin: true
+                )
+            )
+        )
+    }
+
+    @MainActor
     private func resolveCommandExecCloseStdin() {
         guard
             let commandExecSurface,
@@ -514,6 +624,7 @@ struct WorkbenchRootView: View {
 
         commandExecContinuation = nil
         commandExecAllowsMoreControls = false
+        commandExecResizeSent = false
         self.commandExecSurface = DaemonCodexCommandExecControlSurfaceProjector.markCloseStdin(
             on: commandExecSurface
         )
@@ -540,6 +651,7 @@ struct WorkbenchRootView: View {
 
         commandExecContinuation = nil
         commandExecAllowsMoreControls = false
+        commandExecResizeSent = false
         self.commandExecSurface = DaemonCodexCommandExecControlSurfaceProjector.markTerminate(
             on: commandExecSurface
         )
@@ -548,13 +660,6 @@ struct WorkbenchRootView: View {
                 DaemonCodexCommandExecTerminateRequest(processId: commandExecSurface.processId)
             )
         )
-    }
-
-    private func parsedCommandExecArgv() -> [String] {
-        commandExecArgvText
-            .split(whereSeparator: \.isNewline)
-            .map { String($0).trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
     }
 
     private func preferredSession(in sessions: [DaemonSessionSummary]) -> String? {

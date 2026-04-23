@@ -51,7 +51,9 @@ macos-app
    │  └─ main.swift
    ├─ OpenSlopCommandExecInteractiveProbe/
    │  └─ main.swift
-   └─ OpenSlopCommandExecResizeProbe/
+   ├─ OpenSlopCommandExecResizeProbe/
+   │  └─ main.swift
+   └─ OpenSlopCommandExecResizeSurfaceProbe/
       └─ main.swift
 ```
 
@@ -69,10 +71,14 @@ macos-app
 - `WorkbenchCore/CodexTerminalSurface.swift` materialize'ит первый read-only/live-only terminal surface только из streamed transcript, когда есть `processId` и raw `terminalStdin`.
 - `TerminalPaneView` показывает этот surface в inspector как честный live-only pane без stdin control, resize и reconnect claims.
 - Отдельный raw witness на provider boundary уже показал текущий upstream reject для `live processId -> command/exec/write`, поэтому transcript terminal pane остаётся read-only не по осторожности, а по доказанной границе.
-- `WorkbenchCore/CodexCommandExecControlSurface.swift` держит standalone interactive proof truth: live output, stable `processId`, stage `awaitingControl`, `stdinTrail`, final exit.
-- `CommandExecControlPaneView` показывает bounded standalone interactive proof lane: output-paced `write`, `close stdin`, `terminate`, плюс честный `stdin trail`.
+- `WorkbenchCore/CodexCommandExecControlSurface.swift` теперь держит более честную UI truth как `controlTrail`: live output, stable `processId`, stage `awaitingControl`, resize / stdin / terminate markers и final exit.
+- `CommandExecControlPaneView` теперь даёт два fixed proof mode:
+  - `Interactive stdin`
+  - `PTY resize`
+  При этом pane остаётся bounded proof surface и не притворяется full terminal UI.
 - `OpenSlopCommandExecControlSurfaceProbe` доказывает, что GUI surface и probe share one same-connection proof contour с `READY -> PING -> terminate`.
 - `OpenSlopCommandExecControlTimeoutProbe` доказывает fail-closed contour: если GUI не прислал ожидаемый follow-up control, lane падает примерно за 5 секунд и не зависает молча.
 - `OpenSlopCommandExecInteractiveProbe` доказывает следующий contour: `READY -> PING-1 -> PING-2 -> closeStdin -> CLOSED`, zero exit и честный `stdin trail`.
 - `OpenSlopCommandExecResizeProbe` отдельно доказывает PTY contour: `tty=true`, initial `80x24`, same-connection `resize -> 100x40`, затем `write+closeStdin`, и процесс сам печатает новую геометрию.
-- Важная граница остаётся честной: runtime resize proof уже есть, но текущий `CommandExecControlPaneView` всё ещё не materialize'ит resize affordance и не притворяется full terminal UI.
+- `OpenSlopCommandExecResizeSurfaceProbe` доказывает уже app-owned surface truth для resize mode: `controlTrail="[resize 100x40]\\nPING\\n[close-stdin]\\n"` и completed stage.
+- Важная граница остаётся честной: resize mode теперь materialized в inspector только как fixed proof surface. Он не превращён в arbitrary terminal UI и не пробивает transcript contour.

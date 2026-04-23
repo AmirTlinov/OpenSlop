@@ -1,6 +1,10 @@
 import Foundation
 
 public enum DaemonCodexCommandExecProofCommand {
+    public static let defaultInteractiveInput = "PING\n"
+    public static let ptyResizeInitialSize = DaemonCodexCommandExecTerminalSize(cols: 80, rows: 24)
+    public static let ptyResizeTargetSize = DaemonCodexCommandExecTerminalSize(cols: 100, rows: 40)
+
     public static let boundedInteractiveEcho: [String] = [
         "python3",
         "-u",

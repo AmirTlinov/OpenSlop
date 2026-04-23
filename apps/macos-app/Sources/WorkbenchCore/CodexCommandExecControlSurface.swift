@@ -14,10 +14,14 @@ public struct DaemonCodexCommandExecControlSurface: Equatable, Sendable {
     public let mergedOutput: String
     public let stdout: String
     public let stderr: String
-    public let stdinTrail: String
+    public let controlTrail: String
     public let exitCode: Int?
     public let stage: DaemonCodexCommandExecControlStage
     public let lastError: String?
+
+    public var stdinTrail: String {
+        controlTrail
+    }
 
     public init(
         command: [String],
@@ -25,7 +29,7 @@ public struct DaemonCodexCommandExecControlSurface: Equatable, Sendable {
         mergedOutput: String,
         stdout: String,
         stderr: String,
-        stdinTrail: String,
+        controlTrail: String,
         exitCode: Int?,
         stage: DaemonCodexCommandExecControlStage,
         lastError: String?
@@ -35,7 +39,7 @@ public struct DaemonCodexCommandExecControlSurface: Equatable, Sendable {
         self.mergedOutput = mergedOutput
         self.stdout = stdout
         self.stderr = stderr
-        self.stdinTrail = stdinTrail
+        self.controlTrail = controlTrail
         self.exitCode = exitCode
         self.stage = stage
         self.lastError = lastError
@@ -50,7 +54,7 @@ public enum DaemonCodexCommandExecControlSurfaceProjector {
             mergedOutput: "",
             stdout: "",
             stderr: "",
-            stdinTrail: "",
+            controlTrail: "",
             exitCode: nil,
             stage: .running,
             lastError: nil
@@ -72,7 +76,7 @@ public enum DaemonCodexCommandExecControlSurfaceProjector {
                 mergedOutput: surface.mergedOutput + decoded,
                 stdout: surface.stdout + decoded,
                 stderr: surface.stderr,
-                stdinTrail: surface.stdinTrail,
+                controlTrail: surface.controlTrail,
                 exitCode: surface.exitCode,
                 stage: nextStage,
                 lastError: surface.lastError
@@ -84,7 +88,7 @@ public enum DaemonCodexCommandExecControlSurfaceProjector {
                 mergedOutput: surface.mergedOutput + decoded,
                 stdout: surface.stdout,
                 stderr: surface.stderr + decoded,
-                stdinTrail: surface.stdinTrail,
+                controlTrail: surface.controlTrail,
                 exitCode: surface.exitCode,
                 stage: nextStage,
                 lastError: surface.lastError
@@ -102,7 +106,7 @@ public enum DaemonCodexCommandExecControlSurfaceProjector {
             mergedOutput: surface.mergedOutput,
             stdout: surface.stdout,
             stderr: surface.stderr,
-            stdinTrail: surface.stdinTrail,
+            controlTrail: surface.controlTrail,
             exitCode: surface.exitCode,
             stage: stage,
             lastError: surface.lastError
@@ -119,11 +123,18 @@ public enum DaemonCodexCommandExecControlSurfaceProjector {
             mergedOutput: surface.mergedOutput,
             stdout: surface.stdout,
             stderr: surface.stderr,
-            stdinTrail: surface.stdinTrail + raw,
+            controlTrail: surface.controlTrail + raw,
             exitCode: surface.exitCode,
             stage: .running,
             lastError: surface.lastError
         )
+    }
+
+    public static func markWriteAndCloseStdin(
+        raw: String,
+        on surface: DaemonCodexCommandExecControlSurface
+    ) -> DaemonCodexCommandExecControlSurface {
+        markCloseStdin(on: markWrite(raw: raw, on: surface))
     }
 
     public static func markCloseStdin(
@@ -135,7 +146,24 @@ public enum DaemonCodexCommandExecControlSurfaceProjector {
             mergedOutput: surface.mergedOutput,
             stdout: surface.stdout,
             stderr: surface.stderr,
-            stdinTrail: surface.stdinTrail + "[close-stdin]\n",
+            controlTrail: surface.controlTrail + "[close-stdin]\n",
+            exitCode: surface.exitCode,
+            stage: .running,
+            lastError: surface.lastError
+        )
+    }
+
+    public static func markResize(
+        size: DaemonCodexCommandExecTerminalSize,
+        on surface: DaemonCodexCommandExecControlSurface
+    ) -> DaemonCodexCommandExecControlSurface {
+        DaemonCodexCommandExecControlSurface(
+            command: surface.command,
+            processId: surface.processId,
+            mergedOutput: surface.mergedOutput,
+            stdout: surface.stdout,
+            stderr: surface.stderr,
+            controlTrail: surface.controlTrail + "[resize \(size.cols)x\(size.rows)]\n",
             exitCode: surface.exitCode,
             stage: .running,
             lastError: surface.lastError
@@ -151,7 +179,7 @@ public enum DaemonCodexCommandExecControlSurfaceProjector {
             mergedOutput: surface.mergedOutput,
             stdout: surface.stdout,
             stderr: surface.stderr,
-            stdinTrail: surface.stdinTrail + "[terminate]\n",
+            controlTrail: surface.controlTrail + "[terminate]\n",
             exitCode: surface.exitCode,
             stage: .running,
             lastError: surface.lastError
@@ -168,7 +196,7 @@ public enum DaemonCodexCommandExecControlSurfaceProjector {
             mergedOutput: surface.mergedOutput,
             stdout: surface.stdout,
             stderr: surface.stderr,
-            stdinTrail: surface.stdinTrail,
+            controlTrail: surface.controlTrail,
             exitCode: result.exitCode,
             stage: .completed,
             lastError: surface.lastError
@@ -185,7 +213,7 @@ public enum DaemonCodexCommandExecControlSurfaceProjector {
             mergedOutput: surface.mergedOutput,
             stdout: surface.stdout,
             stderr: surface.stderr,
-            stdinTrail: surface.stdinTrail,
+            controlTrail: surface.controlTrail,
             exitCode: surface.exitCode,
             stage: .failed,
             lastError: message

@@ -1,0 +1,28 @@
+# ACCEPTANCE
+
+- `WorkbenchCore/CodexCommandExecControlSurface.swift` materialize'ит:
+  - `controlTrail`,
+  - backward-compatible `stdinTrail` alias,
+  - `markResize(size:)`,
+  - `markWriteAndCloseStdin(raw:)`.
+- `CommandExecControlPaneView` показывает:
+  - segmented proof mode picker `Interactive stdin` / `PTY resize`,
+  - fixed argv command для выбранного mode,
+  - `control trail`,
+  - в resize mode только две action surfaces: `Применить resize 100x40` и `Отправить stdin + close`.
+- `WorkbenchRootView` умеет:
+  - запустить resize proof command с `tty=true` и initial `80x24`,
+  - отправить fixed resize `100x40`,
+  - затем отправить `stdin + close` одним follow-up request,
+  - держать interactive mode отдельно.
+- `OpenSlopCommandExecResizeSurfaceProbe` доказывает:
+  - `stage=completed`,
+  - `control_trail="[resize 100x40]\nPING\n[close-stdin]\n"`,
+  - `SIZE1`, `SIZE2`, `READ:PING` живут в surface output,
+  - final `stdout/stderr` пусты.
+- Regression truth остаётся зелёной:
+  - `make smoke-codex-command-exec-control-surface`,
+  - `make smoke-codex-command-exec-interactive`,
+  - `make smoke-codex-command-exec-resize`,
+  - `make smoke-codex-command-exec-resize-surface`.
+- Слайс не заявляет transcript resize bridge, arbitrary resize UI и clean terminal rendering.

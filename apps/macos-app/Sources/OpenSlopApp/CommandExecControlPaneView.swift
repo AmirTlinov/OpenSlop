@@ -2,15 +2,19 @@ import SwiftUI
 import WorkbenchCore
 
 struct CommandExecControlPaneView: View {
-    let argvText: String
+    @Binding var proofMode: CommandExecProofMode
     @Binding var stdinText: String
     let surface: DaemonCodexCommandExecControlSurface?
     let onRun: () -> Void
+    let onSendResize: () -> Void
     let onSendWrite: () -> Void
+    let onSendWriteAndClose: () -> Void
     let onCloseStdin: () -> Void
     let onTerminate: () -> Void
     let isRunDisabled: Bool
+    let isResizeDisabled: Bool
     let isWriteDisabled: Bool
+    let isWriteAndCloseDisabled: Bool
     let isCloseStdinDisabled: Bool
     let isTerminateDisabled: Bool
 
@@ -18,12 +22,12 @@ struct CommandExecControlPaneView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Standalone exec interactive proof")
+                    Text(proofMode.headline)
                         .font(.headline)
-                    Text("Bounded same-connection proof lane. Fixed command ждёт output-paced follow-up control: write, close stdin или terminate.")
+                    Text(proofMode.summary)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text("Каждый следующий control здесь привязан к output burst. Если follow-up control не приходит примерно за 5 секунд, lane завершается failed.")
+                    Text(proofMode.detail)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -38,13 +42,20 @@ struct CommandExecControlPaneView: View {
                     .background(.quaternary, in: Capsule())
             }
 
+            Picker("Proof mode", selection: $proofMode) {
+                ForEach(CommandExecProofMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+
             VStack(alignment: .leading, spacing: 6) {
                 Text("argv proof command")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
                 ScrollView {
-                    Text(argvText)
+                    Text(proofMode.command.joined(separator: "\n"))
                         .font(.footnote.monospaced())
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -65,7 +76,7 @@ struct CommandExecControlPaneView: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("stdin raw")
+                Text(proofMode == .ptyResize ? "final stdin raw" : "stdin raw")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
@@ -76,14 +87,14 @@ struct CommandExecControlPaneView: View {
                     .background(.background, in: RoundedRectangle(cornerRadius: 10))
             }
 
-            if let surface, !surface.stdinTrail.isEmpty {
+            if let surface, !surface.controlTrail.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("stdin trail")
+                    Text("control trail")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
 
                     ScrollView {
-                        Text(surface.stdinTrail)
+                        Text(surface.controlTrail)
                             .font(.footnote.monospaced())
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -121,19 +132,27 @@ struct CommandExecControlPaneView: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(isRunDisabled)
 
-                Button("Отправить stdin", action: onSendWrite)
-                    .disabled(isWriteDisabled)
+                if proofMode == .ptyResize {
+                    Button("Применить resize 100x40", action: onSendResize)
+                        .disabled(isResizeDisabled)
 
-                Button("Закрыть stdin", action: onCloseStdin)
-                    .disabled(isCloseStdinDisabled)
+                    Button("Отправить stdin + close", action: onSendWriteAndClose)
+                        .disabled(isWriteAndCloseDisabled)
+                } else {
+                    Button("Отправить stdin", action: onSendWrite)
+                        .disabled(isWriteDisabled)
 
-                Button("Завершить", action: onTerminate)
-                    .disabled(isTerminateDisabled)
+                    Button("Закрыть stdin", action: onCloseStdin)
+                        .disabled(isCloseStdinDisabled)
+
+                    Button("Завершить", action: onTerminate)
+                        .disabled(isTerminateDisabled)
+                }
 
                 Spacer()
             }
 
-            Text("Pane не обещает reconnect, resize и полноценный terminal runtime. Текущий contour доказан только для fixed output-paced proof command.")
+            Text(proofMode.footerNote)
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }

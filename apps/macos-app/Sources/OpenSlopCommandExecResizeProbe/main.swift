@@ -5,8 +5,9 @@ import WorkbenchCore
 @main
 struct OpenSlopCommandExecResizeProbe {
     private static let command = DaemonCodexCommandExecProofCommand.ptyResizeWitness
-    private static let initialSize = DaemonCodexCommandExecTerminalSize(cols: 80, rows: 24)
-    private static let resizedSize = DaemonCodexCommandExecTerminalSize(cols: 100, rows: 40)
+    private static let initialSize = DaemonCodexCommandExecProofCommand.ptyResizeInitialSize
+    private static let resizedSize = DaemonCodexCommandExecProofCommand.ptyResizeTargetSize
+    private static let finalInput = DaemonCodexCommandExecProofCommand.defaultInteractiveInput
 
     static func main() async {
         let client = CoreDaemonClient()
@@ -39,7 +40,7 @@ struct OpenSlopCommandExecResizeProbe {
                     return .write(
                         DaemonCodexCommandExecWriteRequest(
                             processId: processId,
-                            deltaBase64: Data("PING\n".utf8).base64EncodedString(),
+                            deltaBase64: Data(finalInput.utf8).base64EncodedString(),
                             closeStdin: true
                         )
                     )
@@ -75,7 +76,7 @@ struct OpenSlopCommandExecResizeProbe {
 
             guard joinedOutput.contains("SIZE1:80x24"),
                   joinedOutput.contains("SIZE2:100x40"),
-                  joinedOutput.contains("READ:PING") else {
+                  joinedOutput.contains("READ:\(finalInput.trimmingCharacters(in: .whitespacesAndNewlines))") else {
                 fail("resize proof missed SIZE1, SIZE2 or READ markers.")
             }
 

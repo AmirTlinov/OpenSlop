@@ -22,6 +22,7 @@ let package = Package(
         .executable(name: "OpenSlopCommandExecControlTimeoutProbe", targets: ["OpenSlopCommandExecControlTimeoutProbe"]),
         .executable(name: "OpenSlopCommandExecInteractiveProbe", targets: ["OpenSlopCommandExecInteractiveProbe"]),
         .executable(name: "OpenSlopCommandExecResizeProbe", targets: ["OpenSlopCommandExecResizeProbe"]),
+        .executable(name: "OpenSlopCommandExecResizeSurfaceProbe", targets: ["OpenSlopCommandExecResizeSurfaceProbe"]),
     ],
     targets: [
         .target(
@@ -97,6 +98,11 @@ let package = Package(
             name: "OpenSlopCommandExecResizeProbe",
             dependencies: ["WorkbenchCore"],
             path: "Sources/OpenSlopCommandExecResizeProbe"
+        ),
+        .executableTarget(
+            name: "OpenSlopCommandExecResizeSurfaceProbe",
+            dependencies: ["WorkbenchCore"],
+            path: "Sources/OpenSlopCommandExecResizeSurfaceProbe"
         ),
     ]
 )

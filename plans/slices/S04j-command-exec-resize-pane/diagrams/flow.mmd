@@ -1,0 +1,10 @@
+flowchart TD
+    A[Choose PTY resize mode] --> B[Run fixed proof command with tty 80x24]
+    B --> C[Output marker R + SIZE1]
+    C --> D[User applies resize 100x40]
+    D --> E[controlTrail adds resize marker]
+    E --> F[Output marker W + SIZE2]
+    F --> G[User sends stdin + close]
+    G --> H[controlTrail adds stdin and close marker]
+    H --> I[Output READ:PING]
+    I --> J[Surface completes]
