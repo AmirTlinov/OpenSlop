@@ -46,3 +46,9 @@ codex app-server generate-json-schema --out /tmp/openslop-codex-schema
   - `sandboxPolicy = { "type": "readOnly" }`
 - live proof для этого шага закреплён на `commandExecution/requestApproval` и показал real approval event для `python3 -c "print(123)"`.
 - `item/commandExecution/terminalInteraction` видно в schema, но этот sub-slice сознательно не объявляет его готовым PTY surface.
+- Для отделения raw upstream truth от продуктовой boundary добавлен witness:
+  - `domains/provider/contracts/codex-app-server/v0.123.0/witnesses/terminal_interaction_witness.py`
+  - `make smoke-codex-terminal-interaction-witness`
+  - witness идёт напрямую в `codex app-server` по stdio, ловит raw notifications и отвечает только на один вопрос: пришёл ли live `item/commandExecution/terminalInteraction`.
+- Этот witness не доказывает готовый PTY UX. Он доказывает более узкий факт: upstream может прислать live `item/commandExecution/terminalInteraction` до нашего provider/core-daemon/gui слоя.
+- Важная live-находка от witness на 2026-04-23: `params.stdin` в живом smoke пришёл как `"\n"`. Это значит, что `terminalInteraction` на upstream-уровне уже несёт raw stdin/control traffic и не должен автоматически трактоваться как user-friendly prompt.

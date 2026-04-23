@@ -32,3 +32,8 @@
   - live `item/started`, `item/completed`, `item/commandExecution/outputDelta` и `item/fileChange/outputDelta` больше не теряются;
   - optional `processId` и `exitCode` доезжают до GUI;
   - timeline показывает command card отдельно от agent prose.
+- Отдельный raw witness теперь отделяет upstream protocol truth от продуктовой boundary:
+  - witness идёт напрямую в `codex app-server` по stdio;
+  - ловит live `item/commandExecution/terminalInteraction`, если сигнал реально приходит;
+  - live witness уже показал, что `params.stdin` может быть сырым вводом вроде `"\n"`, а не человекочитаемым prompt;
+  - сам по себе не обещает PTY UI, stdin control, resize, kill или reconnect.

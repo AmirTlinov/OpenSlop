@@ -12,5 +12,6 @@
   - до первого turn thread ещё не materialized и требует тот же живой runtime;
   - после materialization cold transcript read возможен, а интерактивный turn идёт через `thread/resume`.
 - `provider-domain` честно использует live notification overlay только как надстройку над существующим `thread/read -> successive snapshots` contour. Отдельный PTY lane сюда ещё не притворяется.
+- Raw witness `domains/provider/contracts/codex-app-server/v0.123.0/witnesses/terminal_interaction_witness.py` умеет напрямую проверить upstream `item/commandExecution/terminalInteraction` без участия provider/core-daemon/gui.
 - Текущий live approval proof опирается на turn-level override `approvalPolicy = untrusted` + `sandboxPolicy = readOnly`, потому что default session policy на этой машине возвращает `dangerFullAccess` и сама по себе approval не поднимает.
 - Exact schema subset для текущего protocol surface лежит в `domains/provider/contracts/`.

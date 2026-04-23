@@ -11,4 +11,5 @@
 - [x] Добавить live approval proof для `commandExecution/requestApproval`.
 - [x] Перестать терять typed `commandExecution` и minimal `fileChange` activity внутри streaming transcript path.
 - [x] Протянуть `command`, optional `processId`, optional `exitCode` и command output до GUI как отдельную timeline surface.
+- [x] Добавить raw witness для live `item/commandExecution/terminalInteraction`, чтобы отделить upstream truth от текущего provider/core-daemon/gui gap.
 - [x] Обновить slice docs, AGENTS карты и pinned schema subset.

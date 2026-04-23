@@ -1,0 +1,22 @@
+sequenceDiagram
+    autonumber
+    participant Witness as Raw witness
+    participant Codex as codex app-server
+
+    Witness->>Codex: initialize
+    Codex-->>Witness: initialize result
+    Witness->>Codex: thread/start
+    Codex-->>Witness: thread/start result
+    Witness->>Codex: turn/start(prompt wants blocked stdin)
+    Codex-->>Witness: turn/start result
+
+    loop bounded observation
+        Witness->>Codex: thread/read
+        Codex-->>Witness: thread/read result
+        Codex-->>Witness: item/started
+        Codex-->>Witness: item/commandExecution/outputDelta
+        Codex-->>Witness: item/commandExecution/terminalInteraction
+    end
+
+    Witness->>Witness: record payload, counts, methods
+    Note over Witness: No PTY UI claim yet

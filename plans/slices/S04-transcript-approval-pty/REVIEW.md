@@ -15,6 +15,8 @@
 
 S04 пока не закрыт целиком. В этом коммите закрыт следующий proof target: typed `commandExecution` transcript surface поверх уже существующего streaming + native approval path.
 
+Следующий узкий proof target внутри того же S04: raw upstream witness для live `item/commandExecution/terminalInteraction`, чтобы перестать гадать, теряет ли сигнал `codex app-server` или уже наш provider/core-daemon/gui contour.
+
 ## Local evidence
 
 - `cargo test -p provider-domain` -> PASS
@@ -25,6 +27,7 @@ S04 пока не закрыт целиком. В этом коммите зак
 - `swift run --package-path apps/macos-app OpenSlopApprovalProbe` -> PASS
 - `make smoke-codex-turn` -> PASS
 - `make smoke-codex-approval` -> PASS
+- `make smoke-codex-terminal-interaction-witness` -> PASS
 
 ## Changed surfaces
 
@@ -33,6 +36,7 @@ S04 пока не закрыт целиком. В этом коммите зак
 - `.agents/task_framer/s04-native-approvals/PREFLIGHT.md`
 - `.agents/task_framer/next-slice-after-s04/preflight.md`
 - `.agents/task_framer/s04-next-slice/PREFLIGHT.md`
+- `.agents/task_framer/s04-terminal-interaction-witness/PREFLIGHT.md`
 - `domains/provider/rust/provider-domain/src/lib.rs`
 - `domains/provider/contracts/codex-app-server/v0.123.0/*`
 - `services/core-daemon/src/main.rs`
@@ -41,6 +45,9 @@ S04 пока не закрыт целиком. В этом коммите зак
 - `apps/macos-app/Sources/OpenSlopApprovalProbe/main.swift`
 - `apps/macos-app/Sources/OpenSlopTurnProbe/main.swift`
 - `plans/slices/S04-transcript-approval-pty/*`
+- `Makefile`
+- `plans/slices/S04-transcript-approval-pty/diagrams/terminal-interaction-witness.mmd`
+- `domains/provider/contracts/codex-app-server/v0.123.0/witnesses/terminal_interaction_witness.py`
 
 ## Reviewer verdicts
 
@@ -117,6 +124,24 @@ What is proven:
 - Swift transcript mirror принимает `command`, `processId`, `exitCode`, а timeline рисует command отдельно от assistant prose;
 - scope не уехал в PTY: runtime слушает только `item/started`, `item/completed`, `item/commandExecution/outputDelta`, `item/fileChange/outputDelta`, без `command/exec/*` и без terminal pane;
 - живой `OpenSlopApprovalProbe` подтверждает `transcript_contains_command=true`, `transcript_has_process_id=true`, `transcript_has_exit_code=true`, `contains_done=true`, `final_turn=completed`.
+
+### Terminal interaction witness reviewer pass
+Reviewer: `Pasteur the 13th` (`reviewer`, 2026-04-23)
+
+Verdict: PASS
+
+Blocking findings:
+- none для текущего bounded scope.
+
+Non-blocking findings:
+- README/PLAN не должны трактовать FAIL witness как доказанное отсутствие сигнала навсегда; это только negative run.
+- текущий repo-local proof для `params.stdin` закреплён на живом значении `"\n"`. Более экзотические значения стоит утверждать только с сохранённым артефактом.
+
+What is proven:
+- raw witness идёт в правильной boundary и отделяет upstream `codex app-server` truth от продуктового provider/core-daemon/gui gap;
+- `make smoke-codex-terminal-interaction-witness` проходит и подтверждает, что `codex app-server 0.123.0` может слать live `item/commandExecution/terminalInteraction`;
+- repo-local live proof показал raw `params.stdin = "\n"`, значит это уже upstream stdin/control traffic, а не автоматически user-friendly prompt;
+- sub-slice честно не притворяется PTY UI, stdin/write API, resize, kill или reconnect surface.
 
 ## Closure note
 

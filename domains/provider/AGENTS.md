@@ -36,5 +36,10 @@ provider
   - live `item/started`, `item/completed`, `item/commandExecution/outputDelta` и `item/fileChange/outputDelta` накладываются на successive snapshots;
   - `command`, optional `processId`, optional `exitCode` и aggregated output доходят до GUI как typed transcript items;
   - `item/commandExecution/terminalInteraction` пока сознательно не materialized в продуктовый PTY lane.
+- Raw upstream truth для `item/commandExecution/terminalInteraction` теперь отделён отдельным witness-скриптом:
+  - `domains/provider/contracts/codex-app-server/v0.123.0/witnesses/terminal_interaction_witness.py`;
+  - он идёт напрямую в `codex app-server` по stdio и не проходит через provider/core-daemon/gui;
+  - он честно доказывает upstream presence этого сигнала, если smoke его увидел;
+  - текущий продуктовый contour всё ещё не materialize'ит этот сигнал в PTY surface.
 - Важная граница: до первого completed turn thread ещё не materialized на диск.
 - Ещё одна важная граница: на этой машине default Codex thread стартует с `dangerFullAccess`, поэтому approval-enabled turn для живого proof сейчас делает turn-level override на `approvalPolicy = untrusted` и `sandboxPolicy = readOnly`.
