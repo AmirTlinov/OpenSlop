@@ -50,6 +50,10 @@ provider
   - provider умеет bounded control loop для одного live streaming exec;
   - follow-up `write` и `terminate` идут на той же связи и через тот же `processId`;
   - `resize` пока не объявлен доказанным surface и остаётся только pinned contract.
+- Следующий sub-slice S04i закрыл этот пробел:
+  - `provider-domain` materialize'ит `tty`, initial `size` и `command/exec/resize` как честный standalone PTY contour;
+  - новый proof не опирается на RPC ack, а ждёт, пока сам процесс напечатает новую геометрию;
+  - proof остаётся marker-based и bounded, потому что PTY output chunking и echo-control bytes не выглядят как clean line-buffered transcript.
 - Raw upstream truth для `item/commandExecution/terminalInteraction` теперь отделён отдельным witness-скриптом:
   - `domains/provider/contracts/codex-app-server/v0.123.0/witnesses/terminal_interaction_witness.py`;
   - он идёт напрямую в `codex app-server` по stdio и не проходит через provider/core-daemon/gui;

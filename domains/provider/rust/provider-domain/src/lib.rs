@@ -101,12 +101,21 @@ pub struct CodexApprovalRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CodexCommandExecTerminalSize {
+    pub cols: u16,
+    pub rows: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CodexCommandExecParams {
     pub command: Vec<String>,
     pub cwd: Option<String>,
     pub process_id: Option<String>,
     pub stream_stdout_stderr: bool,
     pub stream_stdin: bool,
+    pub tty: bool,
+    pub size: Option<CodexCommandExecTerminalSize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -149,8 +158,16 @@ pub struct CodexCommandExecTerminateParams {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CodexCommandExecResizeParams {
+    pub process_id: String,
+    pub size: CodexCommandExecTerminalSize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum CodexCommandExecControlRequest {
     Write(CodexCommandExecWriteParams),
+    Resize(CodexCommandExecResizeParams),
     Terminate(CodexCommandExecTerminateParams),
 }
 
@@ -2012,10 +2029,25 @@ fn validate_command_exec_params(
         });
     }
 
-    if (params.stream_stdout_stderr || params.stream_stdin) && params.process_id.is_none() {
+    if (params.stream_stdout_stderr || params.stream_stdin || params.tty)
+        && params.process_id.is_none()
+    {
         return Err(CodexRuntimeError::InvalidCommandExecParams {
-            message: "streamStdoutStderr/streamStdin require a client-supplied processId"
+            message: "streamStdoutStderr/streamStdin/tty require a client-supplied processId"
                 .to_string(),
+        });
+    }
+
+    if params.tty && (!params.stream_stdout_stderr || !params.stream_stdin) {
+        return Err(CodexRuntimeError::InvalidCommandExecParams {
+            message: "tty command/exec requires streamStdoutStderr=true and streamStdin=true"
+                .to_string(),
+        });
+    }
+
+    if params.size.is_some() && !params.tty {
+        return Err(CodexRuntimeError::InvalidCommandExecParams {
+            message: "command/exec size requires tty=true".to_string(),
         });
     }
 
@@ -2046,6 +2078,18 @@ fn validate_command_exec_terminate_params(
     if params.process_id.trim().is_empty() {
         return Err(CodexRuntimeError::InvalidCommandExecParams {
             message: "terminate processId must not be empty".to_string(),
+        });
+    }
+
+    Ok(())
+}
+
+fn validate_command_exec_resize_params(
+    params: &CodexCommandExecResizeParams,
+) -> Result<(), CodexRuntimeError> {
+    if params.process_id.trim().is_empty() {
+        return Err(CodexRuntimeError::InvalidCommandExecParams {
+            message: "resize processId must not be empty".to_string(),
         });
     }
 
@@ -2097,6 +2141,10 @@ impl CodexCommandExecControlRequest {
             CodexCommandExecControlRequest::Write(params) => {
                 validate_command_exec_write_params(&params)?;
                 Ok(("command/exec/write", serde_json::to_value(params)?))
+            }
+            CodexCommandExecControlRequest::Resize(params) => {
+                validate_command_exec_resize_params(&params)?;
+                Ok(("command/exec/resize", serde_json::to_value(params)?))
             }
             CodexCommandExecControlRequest::Terminate(params) => {
                 validate_command_exec_terminate_params(&params)?;
@@ -2521,6 +2569,8 @@ mod tests {
             process_id: None,
             stream_stdout_stderr: false,
             stream_stdin: false,
+            tty: false,
+            size: None,
         };
 
         let result = exec_codex_command_with_binary(repo.path(), &binary, &params)
@@ -2541,6 +2591,8 @@ mod tests {
             process_id: Some("stream-proc-001".to_string()),
             stream_stdout_stderr: true,
             stream_stdin: false,
+            tty: false,
+            size: None,
         };
         let mut deltas = Vec::new();
 
@@ -2575,6 +2627,8 @@ mod tests {
             process_id: None,
             stream_stdout_stderr: true,
             stream_stdin: false,
+            tty: false,
+            size: None,
         };
         let error = stream_codex_command_with_binary(
             Path::new("/tmp"),
@@ -2597,6 +2651,8 @@ mod tests {
             process_id: Some("control-proc-001".to_string()),
             stream_stdout_stderr: true,
             stream_stdin: true,
+            tty: false,
+            size: None,
         };
         let mut seen = Vec::new();
 
@@ -2641,6 +2697,8 @@ mod tests {
             process_id: None,
             stream_stdout_stderr: true,
             stream_stdin: true,
+            tty: false,
+            size: None,
         };
 
         let error = stream_codex_command_with_control_with_binary(
@@ -2652,6 +2710,70 @@ mod tests {
         .expect_err("streamStdin without processId should fail before launch");
 
         assert!(error.to_string().contains("processId"));
+    }
+
+    #[test]
+    fn command_exec_control_lane_accepts_same_connection_resize_then_write() {
+        let repo = tempdir().expect("temp repo should exist");
+        let binary = write_command_exec_resize_stub_binary(repo.path());
+        let params = CodexCommandExecParams {
+            command: vec!["resize-probe".to_string()],
+            cwd: None,
+            process_id: Some("resize-proc-001".to_string()),
+            stream_stdout_stderr: true,
+            stream_stdin: true,
+            tty: true,
+            size: Some(CodexCommandExecTerminalSize { cols: 80, rows: 24 }),
+        };
+        let mut seen = Vec::new();
+        let mut resize_sent = false;
+        let mut write_sent = false;
+
+        let result =
+            stream_codex_command_with_control_with_binary(repo.path(), &binary, &params, |delta| {
+                seen.push(delta.delta_base64.clone());
+
+                if delta.delta_base64 == "U0laRTE6ODB4MjQK" && !resize_sent {
+                    resize_sent = true;
+                    return Ok(Some(CodexCommandExecControlRequest::Resize(
+                        CodexCommandExecResizeParams {
+                            process_id: "resize-proc-001".to_string(),
+                            size: CodexCommandExecTerminalSize {
+                                cols: 100,
+                                rows: 40,
+                            },
+                        },
+                    )));
+                }
+
+                if delta.delta_base64 == "U0laRTI6MTAweDQwCg==" && !write_sent {
+                    write_sent = true;
+                    return Ok(Some(CodexCommandExecControlRequest::Write(
+                        CodexCommandExecWriteParams {
+                            process_id: "resize-proc-001".to_string(),
+                            delta_base64: Some("UElORwo=".to_string()),
+                            close_stdin: false,
+                        },
+                    )));
+                }
+
+                Ok::<Option<CodexCommandExecControlRequest>, std::convert::Infallible>(None)
+            })
+            .expect("resize lane should succeed");
+
+        assert!(resize_sent);
+        assert!(write_sent);
+        assert_eq!(
+            seen,
+            vec![
+                "U0laRTE6ODB4MjQK".to_string(),
+                "U0laRTI6MTAweDQwCg==".to_string(),
+                "UkVBRDpQSU5HCg==".to_string(),
+            ]
+        );
+        assert_eq!(result.stdout, "");
+        assert_eq!(result.stderr, "");
+        assert_eq!(result.exit_code, 0);
     }
 
     #[test]
@@ -2868,6 +2990,94 @@ if args[:3] == ['app-server', '--listen', 'stdio://']:
             print(json.dumps({'id': msg['id'], 'result': {}}), flush=True)
             print(json.dumps({'id': 2, 'result': {
                 'exitCode': 143,
+                'stdout': '',
+                'stderr': ''
+            }}), flush=True)
+            continue
+        print(json.dumps({'id': msg.get('id', 0), 'error': {'code': -32601, 'message': 'unsupported'}}), flush=True)
+    raise SystemExit(0)
+
+print('unsupported args', args, file=sys.stderr)
+raise SystemExit(1)
+"#;
+        fs::write(&path, script).expect("stub script should write");
+        let mut permissions = fs::metadata(&path)
+            .expect("metadata should exist")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&path, permissions).expect("permissions should update");
+        path
+    }
+
+    fn write_command_exec_resize_stub_binary(repo_root: &Path) -> PathBuf {
+        let path = repo_root.join("codex-command-exec-resize-stub.py");
+        let script = r#"#!/usr/bin/env python3
+import json
+import sys
+
+resize_seen = False
+
+args = sys.argv[1:]
+if args == ['--version']:
+    print('codex-cli 0.123.0-stub')
+    raise SystemExit(0)
+
+if args[:3] == ['app-server', '--listen', 'stdio://']:
+    for raw in sys.stdin:
+        raw = raw.strip()
+        if not raw:
+            continue
+        msg = json.loads(raw)
+        method = msg.get('method')
+        if method == 'initialize':
+            print(json.dumps({'id': msg['id'], 'result': {
+                'userAgent': 'stub-client/0.123.0',
+                'codexHome': '/tmp/codex-home',
+                'platformFamily': 'unix',
+                'platformOs': 'macos'
+            }}), flush=True)
+            continue
+        if method == 'command/exec':
+            params = msg['params']
+            assert params['processId'] == 'resize-proc-001'
+            assert params['tty'] is True
+            assert params['streamStdoutStderr'] is True
+            assert params['streamStdin'] is True
+            assert params['size'] == {'cols': 80, 'rows': 24}
+            print(json.dumps({'method': 'command/exec/outputDelta', 'params': {
+                'processId': params['processId'],
+                'stream': 'stdout',
+                'deltaBase64': 'U0laRTE6ODB4MjQK',
+                'capReached': False
+            }}), flush=True)
+            continue
+        if method == 'command/exec/resize':
+            params = msg['params']
+            assert params['processId'] == 'resize-proc-001'
+            assert params['size'] == {'cols': 100, 'rows': 40}
+            resize_seen = True
+            print(json.dumps({'id': msg['id'], 'result': {}}), flush=True)
+            print(json.dumps({'method': 'command/exec/outputDelta', 'params': {
+                'processId': params['processId'],
+                'stream': 'stdout',
+                'deltaBase64': 'U0laRTI6MTAweDQwCg==',
+                'capReached': False
+            }}), flush=True)
+            continue
+        if method == 'command/exec/write':
+            params = msg['params']
+            assert resize_seen
+            assert params['processId'] == 'resize-proc-001'
+            assert params['deltaBase64'] == 'UElORwo='
+            print(json.dumps({'id': msg['id'], 'result': {}}), flush=True)
+            print(json.dumps({'method': 'command/exec/outputDelta', 'params': {
+                'processId': params['processId'],
+                'stream': 'stdout',
+                'deltaBase64': 'UkVBRDpQSU5HCg==',
+                'capReached': False
+            }}), flush=True)
+            print(json.dumps({'id': 2, 'result': {
+                'exitCode': 0,
                 'stdout': '',
                 'stderr': ''
             }}), flush=True)

@@ -1,0 +1,10 @@
+flowchart TD
+    A[Start standalone command/exec control stream] --> B[tty=true size=80x24]
+    B --> C[Process emits marker R + SIZE1:80x24]
+    C --> D[send command/exec/resize 100x40]
+    D --> E[Process gets SIGWINCH]
+    E --> F[Process emits marker W + SIZE2:100x40]
+    F --> G[send write+closeStdin PING]
+    G --> H[Process emits READ:PING]
+    H --> I[result exit 0]
+    I --> J[proof stays outside transcript contour]

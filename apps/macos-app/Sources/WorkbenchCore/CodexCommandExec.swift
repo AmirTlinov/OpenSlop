@@ -28,6 +28,16 @@ public struct DaemonCodexCommandExecControlError: Equatable, Sendable {
     }
 }
 
+public struct DaemonCodexCommandExecTerminalSize: Equatable, Sendable {
+    public let cols: Int
+    public let rows: Int
+
+    public init(cols: Int, rows: Int) {
+        self.cols = cols
+        self.rows = rows
+    }
+}
+
 public struct DaemonCodexCommandExecWriteRequest: Equatable, Sendable {
     public let processId: String
     public let deltaBase64: String?
@@ -48,8 +58,19 @@ public struct DaemonCodexCommandExecTerminateRequest: Equatable, Sendable {
     }
 }
 
+public struct DaemonCodexCommandExecResizeRequest: Equatable, Sendable {
+    public let processId: String
+    public let size: DaemonCodexCommandExecTerminalSize
+
+    public init(processId: String, size: DaemonCodexCommandExecTerminalSize) {
+        self.processId = processId
+        self.size = size
+    }
+}
+
 public enum DaemonCodexCommandExecControlRequest: Equatable, Sendable {
     case write(DaemonCodexCommandExecWriteRequest)
+    case resize(DaemonCodexCommandExecResizeRequest)
     case terminate(DaemonCodexCommandExecTerminateRequest)
 }
 

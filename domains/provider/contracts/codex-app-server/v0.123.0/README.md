@@ -85,6 +85,19 @@ codex app-server generate-json-schema --out /tmp/openslop-codex-schema
   - `resize` пока только pinned в contract subset и явно не объявлен доказанным surface;
   - control dialogue сейчас bounded и proof-owned, без reconnect и без background PTY registry claims.
 
+Важная S04i-specific реальность:
+- standalone PTY resize теперь доказан отдельно:
+  - `apps/macos-app/Sources/OpenSlopCommandExecResizeProbe/main.swift`
+  - `make smoke-codex-command-exec-resize`
+- proof contour узкий:
+  - initial `command/exec` идёт с `tty=true` и `size = 80x24`;
+  - follow-up `command/exec/resize` на той же связи меняет PTY geometry до `100x40`;
+  - proof считается закрытым только потому, что сам процесс печатает `SIZE1:80x24` и `SIZE2:100x40`.
+- текущий живой smoke на 2026-04-23 также показал важную PTY-границу:
+  - output может приходить marker-first и содержать raw echo/control bytes вроде `PING`, `^D` и backspace;
+  - поэтому resize contour здесь proof-owned и marker-based, а не claim про clean terminal rendering.
+- этот слайс не открывает transcript resize bridge, resize UI surface и full terminal runtime.
+
 Важная S04h-specific реальность:
 - добавлен raw witness:
   - `domains/provider/contracts/codex-app-server/v0.123.0/witnesses/live_transcript_control_witness.py`

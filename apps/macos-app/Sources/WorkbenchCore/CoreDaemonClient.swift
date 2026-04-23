@@ -76,12 +76,16 @@ public struct CoreDaemonClient: Sendable {
         command: [String],
         cwd: String? = nil,
         processId: String,
+        tty: Bool = false,
+        size: DaemonCodexCommandExecTerminalSize? = nil,
         onOutput: @escaping @Sendable (DaemonCodexCommandExecOutputEvent) async -> Void
     ) async throws -> DaemonCodexCommandExecResult {
         try await SharedCoreDaemonTransport.instance.streamCodexCommand(
             command: command,
             cwd: cwd,
             processId: processId,
+            tty: tty,
+            size: size,
             onOutput: onOutput
         )
     }
@@ -90,12 +94,16 @@ public struct CoreDaemonClient: Sendable {
         command: [String],
         cwd: String? = nil,
         processId: String,
+        tty: Bool = false,
+        size: DaemonCodexCommandExecTerminalSize? = nil,
         onOutput: @escaping @Sendable (DaemonCodexCommandExecOutputEvent) async -> DaemonCodexCommandExecControlRequest?
     ) async throws -> DaemonCodexCommandExecResult {
         try await SharedCoreDaemonTransport.instance.streamCodexCommandWithControl(
             command: command,
             cwd: cwd,
             processId: processId,
+            tty: tty,
+            size: size,
             onOutput: onOutput
         )
     }
@@ -104,12 +112,16 @@ public struct CoreDaemonClient: Sendable {
         command: [String],
         cwd: String? = nil,
         processId: String,
+        tty: Bool = false,
+        size: DaemonCodexCommandExecTerminalSize? = nil,
         onEvent: @escaping @Sendable (DaemonCodexCommandExecControlWitnessEvent) async -> DaemonCodexCommandExecControlRequest?
     ) async throws -> DaemonCodexCommandExecResult {
         try await SharedCoreDaemonTransport.instance.streamCodexCommandWithControlWitness(
             command: command,
             cwd: cwd,
             processId: processId,
+            tty: tty,
+            size: size,
             onEvent: onEvent
         )
     }
@@ -231,6 +243,8 @@ private actor CoreDaemonTransport {
         command: [String],
         cwd: String?,
         processId: String,
+        tty: Bool,
+        size: DaemonCodexCommandExecTerminalSize?,
         onOutput: @escaping @Sendable (DaemonCodexCommandExecOutputEvent) async -> Void
     ) async throws -> DaemonCodexCommandExecResult {
         try ensureRunning()
@@ -240,7 +254,10 @@ private actor CoreDaemonTransport {
                 command: command,
                 cwd: cwd,
                 processId: processId,
-                streamStdoutStderr: true
+                streamStdoutStderr: true,
+                tty: tty,
+                cols: size?.cols,
+                rows: size?.rows
             )
         )
 
@@ -270,6 +287,8 @@ private actor CoreDaemonTransport {
         command: [String],
         cwd: String?,
         processId: String,
+        tty: Bool,
+        size: DaemonCodexCommandExecTerminalSize?,
         onOutput: @escaping @Sendable (DaemonCodexCommandExecOutputEvent) async -> DaemonCodexCommandExecControlRequest?
     ) async throws -> DaemonCodexCommandExecResult {
         try ensureRunning()
@@ -278,7 +297,10 @@ private actor CoreDaemonTransport {
                 operation: "codex-command-exec-control-stream",
                 command: command,
                 cwd: cwd,
-                processId: processId
+                processId: processId,
+                tty: tty,
+                cols: size?.cols,
+                rows: size?.rows
             )
         )
 
@@ -310,6 +332,8 @@ private actor CoreDaemonTransport {
         command: [String],
         cwd: String?,
         processId: String,
+        tty: Bool,
+        size: DaemonCodexCommandExecTerminalSize?,
         onEvent: @escaping @Sendable (DaemonCodexCommandExecControlWitnessEvent) async -> DaemonCodexCommandExecControlRequest?
     ) async throws -> DaemonCodexCommandExecResult {
         try ensureRunning()
@@ -318,7 +342,10 @@ private actor CoreDaemonTransport {
                 operation: "codex-command-exec-control-stream",
                 command: command,
                 cwd: cwd,
-                processId: processId
+                processId: processId,
+                tty: tty,
+                cols: size?.cols,
+                rows: size?.rows
             )
         )
 
@@ -421,6 +448,15 @@ private actor CoreDaemonTransport {
                     processId: write.processId,
                     deltaBase64: write.deltaBase64,
                     closeStdin: write.closeStdin
+                )
+            )
+        case .resize(let resize):
+            try sendRaw(
+                request: CoreDaemonRequest(
+                    operation: "codex-command-exec-resize",
+                    processId: resize.processId,
+                    cols: resize.size.cols,
+                    rows: resize.size.rows
                 )
             )
         case .terminate(let terminate):

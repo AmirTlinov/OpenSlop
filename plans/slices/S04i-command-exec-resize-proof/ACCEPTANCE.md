@@ -1,0 +1,24 @@
+# ACCEPTANCE
+
+- `domains/provider/rust/provider-domain/src/lib.rs` materialize'ит:
+  - `CodexCommandExecTerminalSize`,
+  - `CodexCommandExecResizeParams`,
+  - `CodexCommandExecControlRequest::Resize`,
+  - validation для `tty=true` + initial size + resize follow-up.
+- `services/core-daemon/src/main.rs` принимает:
+  - `tty`, `cols`, `rows` в initial `codex-command-exec-control-stream`,
+  - `codex-command-exec-resize` только внутри bounded control dialogue,
+  - wrong `processId` для resize отвергается честно и lane продолжает ждать правильный follow-up.
+- `apps/macos-app/Sources/WorkbenchCore/` содержит resize DTO и transport serialization без нового transcript claim.
+- `OpenSlopCommandExecResizeProbe` доказывает end-to-end на реальном Codex runtime:
+  - initial PTY size `80x24`,
+  - follow-up resize `100x40`,
+  - process output содержит `SIZE1:80x24`, `SIZE2:100x40`, `READ:PING`,
+  - final exit `0`,
+  - final `stdout/stderr` пусты.
+- Regression truth остаётся зелёной:
+  - `make smoke-codex-command-exec-control`,
+  - `make smoke-codex-command-exec-control-negative`,
+  - `make smoke-codex-command-exec-control-timeout`,
+  - `make smoke-codex-command-exec-interactive`.
+- Слайс не заявляет transcript resize bridge, general terminal UI и clean PTY rendering.

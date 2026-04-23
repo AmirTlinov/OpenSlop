@@ -1,9 +1,10 @@
 use provider_domain::{
     CodexApprovalDecision, CodexApprovalRequest, CodexCommandExecControlRequest,
     CodexCommandExecOutputDelta, CodexCommandExecOutputStream, CodexCommandExecParams,
-    CodexCommandExecResult, CodexCommandExecTerminateParams, CodexCommandExecWriteParams,
-    CodexRuntimeRegistry, CodexThreadBootstrap, exec_codex_command, read_codex_transcript,
-    stream_codex_command, stream_codex_command_with_control, submit_codex_turn,
+    CodexCommandExecResizeParams, CodexCommandExecResult, CodexCommandExecTerminalSize,
+    CodexCommandExecTerminateParams, CodexCommandExecWriteParams, CodexRuntimeRegistry,
+    CodexThreadBootstrap, exec_codex_command, read_codex_transcript, stream_codex_command,
+    stream_codex_command_with_control, submit_codex_turn,
 };
 use serde::{Deserialize, Serialize};
 use session_domain::{
@@ -37,6 +38,9 @@ struct StdioRequest {
     cwd: Option<String>,
     process_id: Option<String>,
     stream_stdout_stderr: Option<bool>,
+    tty: Option<bool>,
+    cols: Option<u16>,
+    rows: Option<u16>,
     delta_base64: Option<String>,
     close_stdin: Option<bool>,
 }
@@ -427,6 +431,7 @@ impl<R: io::Read, W: Write> CodexCommandExecControlBridge<'_, R, W> {
             )?;
             self.awaiting_followup_control = match &control {
                 CodexCommandExecControlRequest::Write(params) => !params.close_stdin,
+                CodexCommandExecControlRequest::Resize(_) => true,
                 CodexCommandExecControlRequest::Terminate(_) => false,
             };
             return Ok(Some(control));
@@ -458,7 +463,12 @@ fn wait_for_approval_decision(
             return Err("stdio closed while waiting for approval decision".to_string());
         };
 
-        let operation = request.operation.or(request.query).unwrap_or_default();
+        let operation = request
+            .operation
+            .as_deref()
+            .or(request.query.as_deref())
+            .unwrap_or_default()
+            .to_string();
         if operation != "codex-resolve-approval" {
             writeln!(
                 writer,
@@ -538,8 +548,16 @@ fn wait_for_command_exec_control(
             return Err("stdio closed while waiting for command/exec control".to_string());
         };
 
-        let operation = request.operation.or(request.query).unwrap_or_default();
-        if operation != "codex-command-exec-write" && operation != "codex-command-exec-terminate" {
+        let operation = request
+            .operation
+            .as_deref()
+            .or(request.query.as_deref())
+            .unwrap_or_default()
+            .to_string();
+        if operation != "codex-command-exec-write"
+            && operation != "codex-command-exec-resize"
+            && operation != "codex-command-exec-terminate"
+        {
             writeln!(
                 writer,
                 "{}",
@@ -553,17 +571,16 @@ fn wait_for_command_exec_control(
         }
 
         if request.process_id.as_deref() != Some(process_id) {
-            let message = if operation == "codex-command-exec-write" {
-                "write processId does not match active command/exec".to_string()
-            } else {
-                "terminate processId does not match active command/exec".to_string()
+            let message = match operation.as_str() {
+                "codex-command-exec-write" => {
+                    "write processId does not match active command/exec".to_string()
+                }
+                "codex-command-exec-resize" => {
+                    "resize processId does not match active command/exec".to_string()
+                }
+                _ => "terminate processId does not match active command/exec".to_string(),
             };
-            writeln!(
-                writer,
-                "{}",
-                serialize_error(message)
-            )
-            .map_err(|error| error.to_string())?;
+            writeln!(writer, "{}", serialize_error(message)).map_err(|error| error.to_string())?;
             writer.flush().map_err(|error| error.to_string())?;
             continue;
         }
@@ -575,6 +592,12 @@ fn wait_for_command_exec_control(
                     delta_base64: request.delta_base64,
                     close_stdin: request.close_stdin.unwrap_or(false),
                 },
+            ));
+        }
+
+        if operation == "codex-command-exec-resize" {
+            return Ok(CodexCommandExecControlRequest::Resize(
+                build_command_exec_resize_params(&request)?,
             ));
         }
 
@@ -608,6 +631,7 @@ fn build_command_exec_params(request: &StdioRequest) -> Result<CodexCommandExecP
         .command
         .clone()
         .ok_or_else(|| "missing command".to_string())?;
+    let size = build_command_exec_terminal_size(request)?;
 
     Ok(CodexCommandExecParams {
         command,
@@ -615,6 +639,8 @@ fn build_command_exec_params(request: &StdioRequest) -> Result<CodexCommandExecP
         process_id: request.process_id.clone(),
         stream_stdout_stderr: request.stream_stdout_stderr.unwrap_or(false),
         stream_stdin: false,
+        tty: request.tty.unwrap_or(false),
+        size,
     })
 }
 
@@ -625,6 +651,29 @@ fn build_command_exec_control_params(
     params.stream_stdout_stderr = true;
     params.stream_stdin = true;
     Ok(params)
+}
+
+fn build_command_exec_terminal_size(
+    request: &StdioRequest,
+) -> Result<Option<CodexCommandExecTerminalSize>, String> {
+    match (request.cols, request.rows) {
+        (Some(cols), Some(rows)) => Ok(Some(CodexCommandExecTerminalSize { cols, rows })),
+        (None, None) => Ok(None),
+        _ => Err("command/exec size requires both cols and rows".to_string()),
+    }
+}
+
+fn build_command_exec_resize_params(
+    request: &StdioRequest,
+) -> Result<CodexCommandExecResizeParams, String> {
+    let process_id = request
+        .process_id
+        .clone()
+        .ok_or_else(|| "missing processId".to_string())?;
+    let size = build_command_exec_terminal_size(request)?
+        .ok_or_else(|| "missing command/exec resize size".to_string())?;
+
+    Ok(CodexCommandExecResizeParams { process_id, size })
 }
 
 fn map_bootstrap_to_session(repo_root: &Path, bootstrap: &CodexThreadBootstrap) -> SessionSummary {
@@ -780,7 +829,9 @@ fn handle_parsed_stdio_request(request: StdioRequest, repo_root: &Path) -> Strin
             },
             Err(message) => serialize_error(message),
         },
-        "codex-command-exec-write" | "codex-command-exec-terminate" => serialize_error(format!(
+        "codex-command-exec-write"
+        | "codex-command-exec-resize"
+        | "codex-command-exec-terminate" => serialize_error(format!(
             "{operation} is only supported inside codex-command-exec-control-stream"
         )),
         other => serialize_error(format!("unsupported operation: {other}")),
@@ -1080,20 +1131,18 @@ mod tests {
             cwd: None,
             process_id: None,
             stream_stdout_stderr: Some(true),
+            tty: None,
+            cols: None,
+            rows: None,
             delta_base64: None,
             close_stdin: None,
         };
         let mut reader = io::BufReader::new(io::Cursor::new(Vec::<u8>::new()));
         let mut writer = Vec::<u8>::new();
 
-        let handled = handle_streaming_stdio_request(
-            &request,
-            temp.path(),
-            -1,
-            &mut reader,
-            &mut writer,
-        )
-        .expect("stream request should return error payload");
+        let handled =
+            handle_streaming_stdio_request(&request, temp.path(), -1, &mut reader, &mut writer)
+                .expect("stream request should return error payload");
 
         assert!(handled);
         let text = String::from_utf8(writer).expect("writer should be utf8");
@@ -1117,6 +1166,17 @@ mod tests {
         let temp = tempdir().expect("temp dir should exist");
         let response = handle_stdio_request(
             r#"{"operation":"codex-command-exec-terminate","processId":"proc-1"}"#,
+            temp.path(),
+        );
+        assert!(response.contains("\"kind\":\"error\""));
+        assert!(response.contains("only supported inside codex-command-exec-control-stream"));
+    }
+
+    #[test]
+    fn rejects_standalone_command_exec_resize_operation() {
+        let temp = tempdir().expect("temp dir should exist");
+        let response = handle_stdio_request(
+            r#"{"operation":"codex-command-exec-resize","processId":"proc-1","cols":100,"rows":40}"#,
             temp.path(),
         );
         assert!(response.contains("\"kind\":\"error\""));
@@ -1169,6 +1229,55 @@ mod tests {
                 assert!(!params.close_stdin);
             }
             other => panic!("expected write control, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn command_exec_control_accepts_resize() {
+        let mut reader = io::BufReader::new(io::Cursor::new(
+            br#"{"operation":"codex-command-exec-resize","processId":"proc-1","cols":100,"rows":40}
+"#
+            .to_vec(),
+        ));
+        let mut writer = Vec::<u8>::new();
+
+        let control = wait_for_command_exec_control(&mut reader, &mut writer, -1, "proc-1")
+            .expect("resize should succeed");
+
+        let text = String::from_utf8(writer).expect("writer should be utf8");
+        assert!(text.is_empty());
+        match control {
+            CodexCommandExecControlRequest::Resize(params) => {
+                assert_eq!(params.process_id, "proc-1");
+                assert_eq!(params.size.cols, 100);
+                assert_eq!(params.size.rows, 40);
+            }
+            other => panic!("expected resize control, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn command_exec_resize_rejects_wrong_process_id_and_keeps_waiting() {
+        let mut reader = io::BufReader::new(io::Cursor::new(
+            br#"{"operation":"codex-command-exec-resize","processId":"wrong-proc","cols":100,"rows":40}
+{"operation":"codex-command-exec-resize","processId":"proc-1","cols":100,"rows":40}
+"#
+            .to_vec(),
+        ));
+        let mut writer = Vec::<u8>::new();
+
+        let control = wait_for_command_exec_control(&mut reader, &mut writer, -1, "proc-1")
+            .expect("resize should recover");
+
+        let text = String::from_utf8(writer).expect("writer should be utf8");
+        assert!(text.contains("resize processId does not match active command/exec"));
+        match control {
+            CodexCommandExecControlRequest::Resize(params) => {
+                assert_eq!(params.process_id, "proc-1");
+                assert_eq!(params.size.cols, 100);
+                assert_eq!(params.size.rows, 40);
+            }
+            other => panic!("expected resize control, got {other:?}"),
         }
     }
 

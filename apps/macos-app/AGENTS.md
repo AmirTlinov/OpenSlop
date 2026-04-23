@@ -49,13 +49,15 @@ macos-app
    │  └─ main.swift
    ├─ OpenSlopCommandExecControlTimeoutProbe/
    │  └─ main.swift
-   └─ OpenSlopCommandExecInteractiveProbe/
+   ├─ OpenSlopCommandExecInteractiveProbe/
+   │  └─ main.swift
+   └─ OpenSlopCommandExecResizeProbe/
       └─ main.swift
 ```
 
 Сюда идут задачи про window shell, layout, toolbar, keyboard navigation и рендеринг native surfaces.
 
-Текущий реальный proof target для S04, S04a и S04b:
+Текущий реальный proof target для S04 sub-slices:
 - `WorkbenchCore/CoreDaemonClient.swift` держит long-lived stdio transport к `core-daemon --serve-stdio`.
 - `WorkbenchRootView` отправляет live turn, получает successive daemon-owned transcript snapshots, показывает native approval sheet и не владеет runtime truth.
 - `WorkbenchSeed` и `TimelinePanelView` различают `agent`, `command`, `fileChange` и generic `tool`, чтобы command output не превращался в текстовый суп.
@@ -72,3 +74,5 @@ macos-app
 - `OpenSlopCommandExecControlSurfaceProbe` доказывает, что GUI surface и probe share one same-connection proof contour с `READY -> PING -> terminate`.
 - `OpenSlopCommandExecControlTimeoutProbe` доказывает fail-closed contour: если GUI не прислал ожидаемый follow-up control, lane падает примерно за 5 секунд и не зависает молча.
 - `OpenSlopCommandExecInteractiveProbe` доказывает следующий contour: `READY -> PING-1 -> PING-2 -> closeStdin -> CLOSED`, zero exit и честный `stdin trail`.
+- `OpenSlopCommandExecResizeProbe` отдельно доказывает PTY contour: `tty=true`, initial `80x24`, same-connection `resize -> 100x40`, затем `write+closeStdin`, и процесс сам печатает новую геометрию.
+- Важная граница остаётся честной: runtime resize proof уже есть, но текущий `CommandExecControlPaneView` всё ещё не materialize'ит resize affordance и не притворяется full terminal UI.
