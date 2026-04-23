@@ -7,32 +7,36 @@ struct SidebarPanelView: View {
     let loadSummary: String
 
     var body: some View {
-        List(selection: $selectedSessionID) {
-            Section {
-                if sessions.isEmpty {
-                    Text(loadSummary)
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, 8)
-                } else {
-                    ForEach(sessions) { session in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(session.title)
-                                .font(.headline)
-                            Text("\(session.workspace) · \(session.provider) · \(session.status)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+        Group {
+            if sessions.isEmpty {
+                ContentUnavailableView(
+                    "Сессий пока нет",
+                    systemImage: "rectangle.stack",
+                    description: Text(loadSummary)
+                )
+            } else {
+                List(selection: $selectedSessionID) {
+                    Section {
+                        ForEach(sessions) { session in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(session.title)
+                                    .font(.headline)
+                                Text("\(session.workspace) · \(session.provider) · \(session.status)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 4)
+                            .tag(session.id)
                         }
-                        .padding(.vertical, 4)
-                        .tag(session.id)
+                    } header: {
+                        Text("Сессии")
+                    } footer: {
+                        Text(loadSummary)
                     }
                 }
-            } header: {
-                Text("Сессии")
-            } footer: {
-                Text(loadSummary)
+                .listStyle(.sidebar)
             }
         }
-        .listStyle(.sidebar)
         .navigationTitle("Workbench")
     }
 }

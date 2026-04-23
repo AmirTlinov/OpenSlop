@@ -1,0 +1,21 @@
+# ACCEPTANCE
+
+- `WorkbenchCore/WorkbenchShellState.swift` хранит и восстанавливает:
+  - `selectedSessionID`,
+  - `selectedProvider`,
+  - `selectedEffort`,
+  - `isInspectorVisible`.
+- `WorkbenchRootView` загружает persisted shell state на старте и reconcile'ит selection после загрузки session list.
+- Toolbar даёт keyboard path для:
+  - refresh,
+  - start session,
+  - inspector toggle.
+- `ComposerBarView` даёт submit через `Command-Return`.
+- `SidebarPanelView` показывает native empty state вместо сырого текста, когда sessions пусты.
+- `OpenSlopShellStateProbe` доказывает save/load/reconcile shell state.
+- `OpenSlopShellStateProbe` отдельно доказывает, что remembered selection не стирается, когда available session list временно недоступен.
+- В `docs/design/reference-images/` лежат первые semantic shell references:
+  - `workbench-shell-empty.svg`,
+  - `workbench-shell-live.svg`,
+  - `workbench-shell-inspector-hidden.svg`.
+- Slice не заявляет full shell polish, split geometry persistence и screenshot automation.

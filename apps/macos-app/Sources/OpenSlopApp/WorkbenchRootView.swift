@@ -78,10 +78,8 @@ struct WorkbenchRootView: View {
     private let client = CoreDaemonClient()
 
     @State private var sessions: [DaemonSessionSummary] = []
-    @State private var selectedSessionID: DaemonSessionSummary.ID?
+    @State private var shellState: WorkbenchShellState
     @State private var promptText = "Reply with exactly OK."
-    @State private var selectedProvider = "Codex"
-    @State private var selectedEffort = "High"
     @State private var loadState: SessionProjectionLoadState = .idle
     @State private var codexBootstrapState: CodexBootstrapState = .idle
     @State private var transcriptState: TranscriptState = .idle
@@ -96,8 +94,12 @@ struct WorkbenchRootView: View {
     @State private var commandExecAllowsMoreControls = false
     @State private var commandExecResizeSent = false
 
+    init() {
+        _shellState = State(initialValue: WorkbenchShellStateStore.load())
+    }
+
     private var selectedSession: DaemonSessionSummary? {
-        sessions.first(where: { $0.id == selectedSessionID }) ?? sessions.first
+        sessions.first(where: { $0.id == shellState.selectedSessionID }) ?? sessions.first
     }
 
     private var projectionKind: String {
@@ -108,7 +110,7 @@ struct WorkbenchRootView: View {
     }
 
     private var canSubmitTurn: Bool {
-        guard selectedProvider == "Codex", let selectedSession else {
+        guard shellState.selectedProvider == "Codex", let selectedSession else {
             return false
         }
         return !isTurnStreaming
@@ -207,7 +209,7 @@ struct WorkbenchRootView: View {
         NavigationSplitView {
             SidebarPanelView(
                 sessions: sessions,
-                selectedSessionID: $selectedSessionID,
+                selectedSessionID: $shellState.selectedSessionID,
                 loadSummary: loadState.summary
             )
         } detail: {
@@ -227,42 +229,44 @@ struct WorkbenchRootView: View {
                     )
                     .frame(minWidth: 720)
 
-                    InspectorPanelView(
-                        cards: seed.inspectorCards(
-                            projectionKind: projectionKind,
-                            sessionsCount: sessions.count,
-                            selectedSession: selectedSession,
-                            transcript: transcript,
-                            pendingApproval: pendingApproval
-                        ),
-                        terminalSurface: DaemonCodexTerminalSurfaceProjector.liveSurface(from: transcript),
-                        commandExecProofMode: $commandExecProofMode,
-                        commandExecStdinText: $commandExecStdinText,
-                        commandExecSurface: commandExecSurface,
-                        onRunCommandExec: {
-                            Task { await runCommandExecControl() }
-                        },
-                        onSendCommandExecResize: resolveCommandExecResize,
-                        onSendCommandExecWrite: resolveCommandExecWrite,
-                        onSendCommandExecWriteAndClose: resolveCommandExecWriteAndClose,
-                        onCloseCommandExecStdin: resolveCommandExecCloseStdin,
-                        onTerminateCommandExec: resolveCommandExecTerminate,
-                        isRunCommandExecDisabled: !canRunCommandExec,
-                        isCommandExecResizeDisabled: !canSendCommandExecResize,
-                        isCommandExecWriteDisabled: !canSendCommandExecWrite,
-                        isCommandExecWriteAndCloseDisabled: !canSendCommandExecWriteAndClose,
-                        isCommandExecCloseStdinDisabled: !canCloseCommandExecStdin,
-                        isCommandExecTerminateDisabled: !canTerminateCommandExec
-                    )
-                    .frame(minWidth: 280, idealWidth: 320, maxWidth: 360)
+                    if shellState.isInspectorVisible {
+                        InspectorPanelView(
+                            cards: seed.inspectorCards(
+                                projectionKind: projectionKind,
+                                sessionsCount: sessions.count,
+                                selectedSession: selectedSession,
+                                transcript: transcript,
+                                pendingApproval: pendingApproval
+                            ),
+                            terminalSurface: DaemonCodexTerminalSurfaceProjector.liveSurface(from: transcript),
+                            commandExecProofMode: $commandExecProofMode,
+                            commandExecStdinText: $commandExecStdinText,
+                            commandExecSurface: commandExecSurface,
+                            onRunCommandExec: {
+                                Task { await runCommandExecControl() }
+                            },
+                            onSendCommandExecResize: resolveCommandExecResize,
+                            onSendCommandExecWrite: resolveCommandExecWrite,
+                            onSendCommandExecWriteAndClose: resolveCommandExecWriteAndClose,
+                            onCloseCommandExecStdin: resolveCommandExecCloseStdin,
+                            onTerminateCommandExec: resolveCommandExecTerminate,
+                            isRunCommandExecDisabled: !canRunCommandExec,
+                            isCommandExecResizeDisabled: !canSendCommandExecResize,
+                            isCommandExecWriteDisabled: !canSendCommandExecWrite,
+                            isCommandExecWriteAndCloseDisabled: !canSendCommandExecWriteAndClose,
+                            isCommandExecCloseStdinDisabled: !canCloseCommandExecStdin,
+                            isCommandExecTerminateDisabled: !canTerminateCommandExec
+                        )
+                        .frame(minWidth: 280, idealWidth: 320, maxWidth: 360)
+                    }
                 }
 
                 Divider()
 
                 ComposerBarView(
                     promptText: $promptText,
-                    selectedProvider: $selectedProvider,
-                    selectedEffort: $selectedEffort,
+                    selectedProvider: $shellState.selectedProvider,
+                    selectedEffort: $shellState.selectedEffort,
                     onSubmit: {
                         Task { await submitTurn() }
                     },
@@ -271,7 +275,7 @@ struct WorkbenchRootView: View {
             }
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
-                    Picker("Provider", selection: $selectedProvider) {
+                    Picker("Provider", selection: $shellState.selectedProvider) {
                         Text("Codex").tag("Codex")
                         Text("Claude").tag("Claude")
                     }
@@ -279,11 +283,17 @@ struct WorkbenchRootView: View {
                     .frame(width: 180)
 
                     Button("Обновить") {
-                        Task { await loadSessions(force: true, preferredSessionID: selectedSessionID) }
+                        Task { await loadSessions(force: true, preferredSessionID: shellState.selectedSessionID) }
                     }
+                    .keyboardShortcut("r", modifiers: .command)
                     Button("Запустить") {
                         Task { await startCodexSession() }
                     }
+                    .keyboardShortcut("n", modifiers: .command)
+                    Button(shellState.isInspectorVisible ? "Скрыть inspector" : "Показать inspector") {
+                        shellState.isInspectorVisible.toggle()
+                    }
+                    .keyboardShortcut("i", modifiers: [.command, .option])
                 }
             }
         }
@@ -291,8 +301,11 @@ struct WorkbenchRootView: View {
         .task {
             await loadSessions(force: false, preferredSessionID: nil)
         }
-        .task(id: selectedSessionID) {
+        .task(id: shellState.selectedSessionID) {
             await loadTranscriptForSelection(force: true)
+        }
+        .onChange(of: shellState) { _, newValue in
+            WorkbenchShellStateStore.save(newValue)
         }
         .onChange(of: commandExecProofMode) { _, newMode in
             guard !isCommandExecActive else {
@@ -326,11 +339,14 @@ struct WorkbenchRootView: View {
             let projection = try await client.fetchSessionProjection()
             let daemonPID = try await client.daemonProcessIdentifier()
             sessions = projection.sessions
-            selectedSessionID = preferredSessionID ?? preferredSession(in: projection.sessions) ?? projection.sessions.first?.id
+            shellState.selectedSessionID = shellState.reconciledSelection(
+                preferredSessionID: preferredSessionID,
+                availableSessionIDs: projection.sessions.map(\.id),
+                liveSessionPredicate: looksLikeLiveCodexThread
+            )
             loadState = .loaded(kind: projection.kind, transport: "stdio pid=\(daemonPID)")
         } catch {
             sessions = []
-            selectedSessionID = nil
             transcript = nil
             loadState = .failed(message: error.localizedDescription)
         }
@@ -660,10 +676,6 @@ struct WorkbenchRootView: View {
                 DaemonCodexCommandExecTerminateRequest(processId: commandExecSurface.processId)
             )
         )
-    }
-
-    private func preferredSession(in sessions: [DaemonSessionSummary]) -> String? {
-        sessions.last(where: { looksLikeLiveCodexThread($0.id) })?.id
     }
 
     private func looksLikeLiveCodexThread(_ value: String) -> Bool {

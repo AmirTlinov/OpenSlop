@@ -14,6 +14,7 @@ macos-app
    │  ├─ CodexTranscriptSnapshot.swift
    │  ├─ CodexApprovalRequest.swift
    │  ├─ BoundedOutputTail.swift
+   │  ├─ WorkbenchShellState.swift
    │  ├─ CodexCommandExec.swift
    │  ├─ CodexCommandExecControlSurface.swift
    │  ├─ CodexTerminalSurface.swift
@@ -45,6 +46,8 @@ macos-app
    │  └─ main.swift
    ├─ OpenSlopTerminalTailProbe/
    │  └─ main.swift
+   ├─ OpenSlopShellStateProbe/
+   │  └─ main.swift
    ├─ OpenSlopCommandExecProbe/
    │  └─ main.swift
    ├─ OpenSlopCommandExecControlProbe/
@@ -66,7 +69,10 @@ macos-app
 Текущий реальный proof target для S04 sub-slices:
 - `WorkbenchCore/CoreDaemonClient.swift` держит long-lived stdio transport к `core-daemon --serve-stdio`.
 - `WorkbenchRootView` отправляет live turn, получает successive daemon-owned transcript snapshots, показывает native approval sheet и не владеет runtime truth.
+- `WorkbenchCore/WorkbenchShellState.swift` держит app-owned shell state для selection/provider/effort/inspector visibility и не лезет в runtime truth.
 - `WorkbenchSeed` и `TimelinePanelView` различают `agent`, `command`, `fileChange` и generic `tool`, чтобы command output не превращался в текстовый суп.
+- `SidebarPanelView` уже materialize'ит native empty state для пустого session list, а shell actions получили keyboard path для refresh/start/submit/toggle inspector.
+- `OpenSlopShellStateProbe` доказывает save/load/reconcile для persisted shell state без запуска window automation.
 - `OpenSlopTurnProbe` доказывает reuse daemon PID, streaming progress и наличие user/agent transcript items после completed turn.
 - `OpenSlopApprovalProbe` доказывает live `commandExecution` approval request, typed command transcript item и completed turn после approve.
 - `WorkbenchCore` теперь держит и standalone `command/exec` DTO + client methods для buffered и streaming proof lane.

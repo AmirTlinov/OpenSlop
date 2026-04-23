@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900">
+<rect width="100%" height="100%" fill="#f3f4f7" />
+<rect x="24" y="24" width="1392" height="852" rx="24" ry="24" fill="#ffffff" stroke="#cfd5df" stroke-width="1" />
+<rect x="24" y="24" width="1392" height="56" rx="24" ry="24" fill="#f5f6f8" stroke="#cfd5df" stroke-width="1" />
+<rect x="24" y="56" width="1392" height="24" fill="#f5f6f8" />
+<text x="64" y="55" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="16" font-weight="400">OpenSlop</text>
+<rect x="240" y="36" width="180" height="30" rx="14" ry="14" fill="#dbeafe" stroke="#cfd5df" stroke-width="1" />
+<text x="260" y="55" fill="#334155" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="400">Codex / Claude</text>
+<rect x="1020" y="36" width="96" height="30" rx="14" ry="14" fill="#ffffff" stroke="#cfd5df" stroke-width="1" />
+<text x="1044" y="55" fill="#334155" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="400">Refresh</text>
+<rect x="1130" y="36" width="96" height="30" rx="14" ry="14" fill="#ffffff" stroke="#cfd5df" stroke-width="1" />
+<text x="1158" y="55" fill="#334155" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="400">Start</text>
+<rect x="1240" y="36" width="120" height="30" rx="14" ry="14" fill="#ffffff" stroke="#cfd5df" stroke-width="1" />
+<text x="1264" y="55" fill="#334155" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="400">Inspector</text>
+<text x="40" y="106" fill="#6b7280" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="400">workbench · shell · live</text>
+<rect x="24" y="82" width="278" height="676" fill="#edf1f6" stroke="#cfd5df" stroke-width="1" />
+<rect x="302" y="82" width="782" height="676" fill="#fbfbfc" stroke="#cfd5df" stroke-width="1" />
+<rect x="24" y="758" width="1392" height="118" fill="#f5f6f8" stroke="#cfd5df" stroke-width="1" />
+<rect x="1084" y="82" width="332" height="676" fill="#e8edf4" stroke="#cfd5df" stroke-width="1" />
+<line x1="1084" y1="82" x2="1084" y2="758" stroke="#bcc5d1" stroke-width="2" />
+<text x="48" y="140" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="18" font-weight="600">Workbench</text>
+<rect x="44" y="150" width="220" height="76" rx="18" ry="18" fill="#ffffff" stroke="#cfd5df" stroke-width="1" />
+<text x="60" y="178" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="16" font-weight="400">Live Codex task</text>
+<text x="60" y="202" fill="#6b7280" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="400">OpenSlop · running</text>
+<rect x="44" y="242" width="220" height="76" rx="18" ry="18" fill="#ffffff" stroke="#cfd5df" stroke-width="1" />
+<text x="60" y="270" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="16" font-weight="400">Claude follow-up</text>
+<text x="60" y="294" fill="#6b7280" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="400">OpenSlop · running</text>
+<rect x="44" y="334" width="220" height="76" rx="18" ry="18" fill="#ffffff" stroke="#cfd5df" stroke-width="1" />
+<text x="60" y="362" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="16" font-weight="400">Pinned proof lane</text>
+<text x="60" y="386" fill="#6b7280" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="400">OpenSlop · running</text>
+<rect x="340" y="132" width="720" height="104" rx="18" ry="18" fill="#ffffff" stroke="#cfd5df" stroke-width="1" />
+<text x="370" y="170" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="18" font-weight="400">Timeline header</text>
+<text x="370" y="198" fill="#6b7280" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="15" font-weight="400">Project · branch · provider · status</text>
+<rect x="934" y="152" width="90" height="30" rx="14" ry="14" fill="#e9edf3" stroke="#cfd5df" stroke-width="1" />
+<text x="958" y="171" fill="#475569" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="400">S04</text>
+<rect x="348" y="262" width="700" height="110" rx="18" ry="18" fill="#ffffff" stroke="#cfd5df" stroke-width="1" />
+<text x="372" y="284" fill="#6b7280" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="400">User</text>
+<text x="372" y="314" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="16" font-weight="400">Run the proof lane and report the result.</text>
+<rect x="348" y="388" width="700" height="110" rx="18" ry="18" fill="#ffffff" stroke="#cfd5df" stroke-width="1" />
+<text x="372" y="410" fill="#6b7280" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="400">Command</text>
+<text x="372" y="440" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="16" font-weight="400">python3 -c ...</text>
+<text x="372" y="470" fill="#6b7280" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="400">Output tail preview. Full live tail in Inspector.</text>
+<rect x="348" y="514" width="700" height="110" rx="18" ry="18" fill="#ffffff" stroke="#cfd5df" stroke-width="1" />
+<text x="372" y="536" fill="#6b7280" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="400">Agent</text>
+<text x="372" y="566" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="16" font-weight="400">Done. Inspector holds the live tail.</text>
+<text x="1102" y="140" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="17" font-weight="600">Inspector</text>
+<rect x="1102" y="160" width="290" height="118" rx="18" ry="18" fill="#ffffff" stroke="#cfd5df" stroke-width="1" />
+<text x="1126" y="196" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="17" font-weight="400">Inspector summary</text>
+<text x="1126" y="226" fill="#6b7280" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="400">Projection · Sessions · Provider</text>
+<rect x="1102" y="296" width="290" height="340" rx="18" ry="18" fill="#ffffff" stroke="#cfd5df" stroke-width="1" />
+<text x="1126" y="332" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="17" font-weight="400">Live terminal / proof output</text>
+<text x="1126" y="360" fill="#6b7280" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="400">Output tail only</text>
+<text x="1126" y="388" fill="#6b7280" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="400">Hidden prefix is reported honestly.</text>
+<text x="1126" y="430" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="400">LINE 214: latest output ...</text>
+<text x="1126" y="452" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="400">LINE 215: latest output ...</text>
+<text x="1126" y="474" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="400">LINE 216: latest output ...</text>
+<text x="1126" y="496" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="400">LINE 217: latest output ...</text>
+<text x="1126" y="518" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="400">LINE 218: latest output ...</text>
+<text x="1126" y="540" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="400">LINE 219: latest output ...</text>
+<text x="1126" y="562" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="400">LINE 220: latest output ...</text>
+<text x="1126" y="584" fill="#22252b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="400">LINE 221: latest output ...</text>
+<rect x="52" y="786" width="1336" height="72" rx="18" ry="18" fill="#ffffff" stroke="#cfd5df" stroke-width="1" />
+<text x="76" y="822" fill="#6b7280" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="15" font-weight="400">Composer remembers provider and effort. Submit uses Command-Return.</text>
+</svg>

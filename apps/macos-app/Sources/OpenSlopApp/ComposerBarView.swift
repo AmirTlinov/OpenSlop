@@ -13,6 +13,12 @@ struct ComposerBarView: View {
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(2...5)
 
+            if selectedProvider == "Claude" {
+                Text("Claude runtime ещё planned. Живой submit path в этом shell сейчас честно работает только для Codex.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             HStack {
                 Picker("Provider", selection: $selectedProvider) {
                     Text("Codex").tag("Codex")
@@ -32,6 +38,7 @@ struct ComposerBarView: View {
                 Button("Отправить", action: onSubmit)
                     .buttonStyle(.borderedProminent)
                     .disabled(isSubmitDisabled)
+                    .keyboardShortcut(.return, modifiers: .command)
             }
         }
         .padding(16)

@@ -1,0 +1,9 @@
+flowchart TD
+    A[WorkbenchRootView init] --> B[WorkbenchShellStateStore load]
+    B --> C[Persisted shell state]
+    C --> D[Sidebar selection]
+    C --> E[Provider and effort]
+    C --> F[Inspector visibility]
+    D --> G[Session projection reconcile]
+    F --> H[Inspector toggle with keyboard path]
+    I[Reference images] --> J[Semantic visual anchors for shell review]
