@@ -13,9 +13,9 @@
 
 ## Current posture
 
-S04 пока не закрыт целиком. Исторически здесь уже были закрыты live passthrough для raw `item/commandExecution/terminalInteraction` и первый read-only/live-only terminal pane в inspector. Interactive terminal control и virtualization всё ещё pending.
+S04 закрыт на текущем доказанном ceiling. Закрыты live transcript, native approvals, typed `commandExecution` transcript surface, raw `item/commandExecution/terminalInteraction` passthrough и первый read-only/live-only terminal pane в inspector.
 
-Typed `commandExecution` transcript surface и raw upstream witness уже были закрыты раньше в этом же slice.
+Interactive transcript terminal control не входит в S04 closure. Raw same-connection witness сейчас показывает upstream reject для live transcript `processId -> command/exec/write`. Virtualization вынесена в будущий scale/performance slice.
 
 ## Local evidence
 
@@ -172,4 +172,24 @@ What is proven:
 
 ## Closure note
 
-Первый read-only/live-only terminal pane теперь уже materialized отдельным sub-slice. Следующий честный runtime шаг уже уже отдельно: interactive stdin/write/resize/kill и virtualization.
+Первый read-only/live-only terminal pane теперь уже materialized отдельным sub-slice. Следующий честный runtime шаг уже отдельно: interactive stdin/write/resize/kill и virtualization.
+
+## Parent closure reconciliation
+
+- verdict: PASS after blocker fix
+- reviewer: reviewer subagent `Tesla the 2nd`
+- date: 2026-04-23
+
+Review confirmed:
+- `ROADMAP.md` и `STATUS.md` честно закрывают S04 только на current ceiling;
+- deferred boundary для interactive transcript terminal control не выдаётся за готовую возможность;
+- evidence включает positive transcript/approval/terminal-surface checks и negative live-control witness на локальном `codex-cli 0.124.0`;
+- первоначальный blocker был в старой Current posture строке, где S04 всё ещё назывался незакрытым. Эта строка исправлена.
+
+## Required reconciliation evidence
+
+- `make smoke-codex-turn`
+- `make smoke-codex-approval`
+- `make smoke-codex-terminal-surface`
+- `make smoke-codex-command-exec-resize-surface`
+- `make smoke-codex-live-transcript-control-witness`

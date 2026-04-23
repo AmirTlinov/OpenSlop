@@ -21,3 +21,7 @@
 - `OpenSlopTerminalSurfaceProbe` доказывает end-to-end: streamed transcript materialize'ит terminal surface, final streamed transcript тоже, ordinary readback — нет.
 - Текущий live approval proof опирается на turn-level override `approvalPolicy = untrusted` + `sandboxPolicy = readOnly`, потому что default session policy на этой машине возвращает `dangerFullAccess` и сама по себе approval не поднимает.
 - Exact schema subset для текущего protocol surface лежит в `domains/provider/contracts/`.
+
+## Closure boundary
+
+S04 считается закрытым на current ceiling: live transcript, native approvals, typed command transcript, terminalInteraction passthrough и read-only/live-only terminal pane. Interactive transcript terminal control не заявляется, потому что raw same-connection witness уже показал current upstream reject для `processId -> command/exec/write`. Virtualization не является S04 acceptance blocker.

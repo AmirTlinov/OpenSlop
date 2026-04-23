@@ -14,7 +14,7 @@
 | `S01c-workbench-shell-empty-window-grammar` | Honest empty/unavailable center grammar без S04 proof placeholders | S01b | done |
 | `S02-event-spine` | Canonical event log, IPC, projections | S00 | done |
 | `S03-codex-runtime` | Live Codex bootstrap lane через app-server | S02 | done |
-| `S04-transcript-approval-pty` | Live turn transcript, native approvals и дальше PTY | S03 | in progress |
+| `S04-transcript-approval-pty` | Live turn transcript, native approvals и read-only/live terminal ceiling | S03 | done |
 | `S04a-command-exec-proof` | Standalone connection-scoped `command/exec` proof lane | S03 | done |
 | `S04b-command-exec-control-write` | Same-connection `command/exec` write + terminate proof lane | S04a | done |
 | `S04c-command-exec-negative-law` | Wrong `processId` rejection without false control takeover | S04b | done |

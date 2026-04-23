@@ -16,3 +16,8 @@
 - [x] Добавить live probe, который доказывает passthrough до final streamed transcript и отсутствие `terminalStdin` в ordinary readback.
 - [x] Materialize первый read-only/live-only terminal pane в native inspector поверх streamed transcript contour.
 - [x] Обновить slice docs, AGENTS карты и pinned schema subset.
+
+## Deferred boundary
+
+- [x] Зафиксировать, что interactive transcript terminal control не входит в S04 closure: raw witness показал upstream reject для live transcript `processId -> command/exec/write`.
+- [x] Зафиксировать, что virtualization остаётся scale/performance work, не S04 acceptance blocker.

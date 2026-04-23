@@ -46,3 +46,8 @@
   - native inspector умеет показать read-only/live-only terminal pane;
   - pane держится только на streamed transcript с `processId` + `terminalStdin`;
   - pane не притворяется interactive stdin/write/resize/reconnect surface.
+
+
+## Parent reconciliation note
+
+S04 начинался как transcript + approval slice. Позже под ним появились bounded standalone `command/exec` proof/control/resize sub-slices. Это не превращает S04 в full terminal runtime. Parent closure фиксирует доказанный ceiling: live transcript, native approvals, typed command surface, read-only/live-only terminal pane и standalone proof/control contours. Interactive transcript terminal control остаётся deferred boundary после raw upstream reject для `processId -> command/exec/write`.
