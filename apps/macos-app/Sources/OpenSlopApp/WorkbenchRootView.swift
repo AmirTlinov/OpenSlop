@@ -94,6 +94,9 @@ struct WorkbenchRootView: View {
     @State private var gitReviewSelectedPath: String?
     @State private var gitReviewError: String?
     @State private var isGitReviewLoading = false
+    @State private var claudeRuntimeStatus: DaemonClaudeRuntimeStatus?
+    @State private var claudeRuntimeError: String?
+    @State private var isClaudeRuntimeLoading = false
     @State private var inspectorTab: InspectorPanelTab = .summary
     @State private var commandExecContinuation: CheckedContinuation<DaemonCodexCommandExecControlRequest?, Never>?
     @State private var commandExecAllowsMoreControls = false
@@ -263,6 +266,9 @@ struct WorkbenchRootView: View {
                         promptText: $promptText,
                         selectedProvider: shellState.selectedProvider,
                         selectedEffort: shellState.selectedEffort,
+                        claudeRuntimeStatus: claudeRuntimeStatus,
+                        claudeRuntimeError: claudeRuntimeError,
+                        isClaudeRuntimeLoading: isClaudeRuntimeLoading,
                         onStartSession: {
                             Task { await startCodexSession() }
                         },
@@ -283,13 +289,20 @@ struct WorkbenchRootView: View {
                                 transcript: transcript,
                                 pendingApproval: pendingApproval
                             ),
+                            selectedProvider: shellState.selectedProvider,
                             terminalSurface: DaemonCodexTerminalSurfaceProjector.liveSurface(from: transcript),
                             gitReviewSnapshot: gitReviewSnapshot,
                             gitReviewError: gitReviewError,
                             isGitReviewLoading: isGitReviewLoading,
+                            claudeRuntimeStatus: claudeRuntimeStatus,
+                            claudeRuntimeError: claudeRuntimeError,
+                            isClaudeRuntimeLoading: isClaudeRuntimeLoading,
                             selectedTab: $inspectorTab,
                             onRefreshGitReview: {
                                 Task { await loadGitReview(selectedPath: gitReviewSelectedPath) }
+                            },
+                            onRefreshClaudeRuntime: {
+                                Task { await loadClaudeRuntimeStatus() }
                             },
                             onSelectGitReviewPath: { path in
                                 Task { await loadGitReview(selectedPath: path) }
@@ -328,6 +341,9 @@ struct WorkbenchRootView: View {
                         promptText: $promptText,
                         selectedProvider: $shellState.selectedProvider,
                         selectedEffort: $shellState.selectedEffort,
+                        claudeRuntimeStatus: claudeRuntimeStatus,
+                        claudeRuntimeError: claudeRuntimeError,
+                        isClaudeRuntimeLoading: isClaudeRuntimeLoading,
                         onSubmit: {
                             Task { await submitTurn() }
                         },
@@ -348,6 +364,7 @@ struct WorkbenchRootView: View {
                         Task {
                             await loadSessions(force: true, preferredSessionID: shellState.selectedSessionID)
                             await loadGitReview(selectedPath: gitReviewSelectedPath)
+                            await loadClaudeRuntimeStatus()
                         }
                     }
                     .keyboardShortcut("r", modifiers: .command)
@@ -370,6 +387,7 @@ struct WorkbenchRootView: View {
         .task {
             await loadSessions(force: false, preferredSessionID: nil)
             await loadGitReview(selectedPath: gitReviewSelectedPath)
+            await loadClaudeRuntimeStatus()
         }
         .task(id: shellState.selectedSessionID) {
             await loadTranscriptForSelection(force: true)
@@ -500,7 +518,27 @@ struct WorkbenchRootView: View {
     }
 
     @MainActor
+    private func loadClaudeRuntimeStatus() async {
+        isClaudeRuntimeLoading = true
+        claudeRuntimeError = nil
+
+        do {
+            claudeRuntimeStatus = try await client.fetchClaudeRuntimeStatus()
+            isClaudeRuntimeLoading = false
+        } catch {
+            claudeRuntimeStatus = nil
+            claudeRuntimeError = error.localizedDescription
+            isClaudeRuntimeLoading = false
+        }
+    }
+
+    @MainActor
     private func startCodexSession() async {
+        guard canStartCodexSession else {
+            codexBootstrapState = .failed(message: startCodexBlockedMessage())
+            return
+        }
+
         codexBootstrapState = .running
 
         do {
@@ -559,6 +597,11 @@ struct WorkbenchRootView: View {
         let input = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else {
             transcriptState = .unavailable(message: "Пустой turn отправлять нельзя.")
+            return
+        }
+
+        guard canSubmitTurn else {
+            transcriptState = .unavailable(message: turnSubmitBlockedMessage(for: selectedSession))
             return
         }
 
@@ -824,6 +867,34 @@ struct WorkbenchRootView: View {
                 DaemonCodexCommandExecTerminateRequest(processId: commandExecSurface.processId)
             )
         )
+    }
+
+    private func startCodexBlockedMessage() -> String {
+        if shellState.selectedProvider == "Claude" {
+            return "Claude runtime найден только как status boundary. Codex start не должен запускаться из Claude provider state."
+        }
+
+        if isCodexBootstrapRunning {
+            return "Codex session уже запускается."
+        }
+
+        return "Codex start сейчас закрыт fail-closed: provider=\(shellState.selectedProvider)."
+    }
+
+    private func turnSubmitBlockedMessage(for selectedSession: DaemonSessionSummary) -> String {
+        if shellState.selectedProvider == "Claude" {
+            return "Claude runtime найден только как status boundary. Claude turns закрыты до следующего S05 slice."
+        }
+
+        if isTurnStreaming {
+            return "Turn уже выполняется. Дождись terminal state перед следующим submit."
+        }
+
+        if !looksLikeLiveCodexThread(selectedSession.id) {
+            return "Выбранная session не является живым Codex thread. Сначала запусти новую Codex session."
+        }
+
+        return "Submit сейчас закрыт fail-closed: provider=\(shellState.selectedProvider), session=\(selectedSession.id)."
     }
 
     private func looksLikeLiveCodexThread(_ value: String) -> Bool {

@@ -28,6 +28,7 @@
 | `S04j-command-exec-resize-pane` | Native fixed resize proof mode in inspector pane | S04e,S04i | done |
 | `S04k-inspector-output-tail-hardening` | Bounded tail rendering for live terminal and proof output surfaces | S04d,S04j | done |
 | `S05-claude-runtime` | Claude runtime через bridge | S02 | planned |
+| `S05a-claude-runtime-status` | Первый fail-closed Claude runtime status через bridge | S02,S01d | done |
 | `S06-git-review-artifacts` | Diff, artifacts, worktrees | S02 | planned |
 | `S06a-readonly-git-review-surface` | Read-only branch/status/diff/file preview в Inspector | S02,S01 | done |
 | `S07-browser-preview` | Встроенный native preview browser | S01,S02 | planned |

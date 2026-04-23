@@ -53,3 +53,7 @@ Reference images живут в `docs/design/reference-images/` и в slice-local
 - Все основные действия обязаны иметь keyboard path.
 - Контраст и selected state должны быть читаемыми без hover.
 - Screen-reader friendliness важен с первых реальных экранов, не в последнюю неделю.
+
+## Provider status surfaces
+
+Если provider выбран, но его runtime path ещё не доказан, GUI обязан показывать fail-closed status. Status card говорит, что реально найдено, какие capabilities только CLI-level, и какие bridge-возможности ещё planned.

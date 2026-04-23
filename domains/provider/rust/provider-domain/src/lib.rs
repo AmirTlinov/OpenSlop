@@ -1,3 +1,6 @@
+mod claude_runtime;
+
+pub use claude_runtime::{ClaudeBridgeSummary, ClaudeCapabilitySnapshot, ClaudeRuntimeStatus};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::cell::RefCell;

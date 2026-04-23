@@ -1,0 +1,7 @@
+flowchart LR
+    GUI[OpenSlop.app] --> Core[core-daemon\nclaude-runtime-status]
+    Core --> Bridge[claude-bridge.mjs\nstatus --json]
+    Bridge --> CLI[Claude Code CLI\n--version + --help]
+    Bridge --> Status[ClaudeRuntimeStatus\nfail-closed capabilities]
+    Status --> Core
+    Core --> GUI

@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ClaudeRuntimeStatus",
+  "type": "object",
+  "required": [
+    "kind",
+    "runtime",
+    "available",
+    "bridge",
+    "binaryPath",
+    "cliVersion",
+    "nodeVersion",
+    "checkedAt",
+    "capabilities",
+    "helpSignals",
+    "warnings"
+  ],
+  "properties": {
+    "kind": { "const": "claude_runtime_status" },
+    "runtime": { "const": "claude-code-cli" },
+    "available": { "type": "boolean" },
+    "bridge": {
+      "type": "object",
+      "required": ["name", "version", "transport"],
+      "properties": {
+        "name": { "const": "claude-bridge" },
+        "version": { "type": "string" },
+        "transport": { "const": "stdio-json" }
+      },
+      "additionalProperties": false
+    },
+    "binaryPath": { "type": ["string", "null"] },
+    "cliVersion": { "type": ["string", "null"] },
+    "nodeVersion": { "type": ["string", "null"] },
+    "checkedAt": { "type": "string" },
+    "capabilities": {
+      "type": "object",
+      "required": [
+        "runtimeDiscovery",
+        "cliPrintJson",
+        "cliStreamJsonOutput",
+        "cliStreamJsonInput",
+        "cliSessionResume",
+        "cliExplicitSessionId",
+        "cliPermissionMode",
+        "cliMcpConfig",
+        "bridgeTurnStreaming",
+        "bridgeSessionMirror",
+        "bridgeNativeApprovals",
+        "bridgeTracingHandoff"
+      ],
+      "properties": {
+        "runtimeDiscovery": { "type": "boolean" },
+        "cliPrintJson": { "type": "boolean" },
+        "cliStreamJsonOutput": { "type": "boolean" },
+        "cliStreamJsonInput": { "type": "boolean" },
+        "cliSessionResume": { "type": "boolean" },
+        "cliExplicitSessionId": { "type": "boolean" },
+        "cliPermissionMode": { "type": "boolean" },
+        "cliMcpConfig": { "type": "boolean" },
+        "bridgeTurnStreaming": { "type": "boolean" },
+        "bridgeSessionMirror": { "type": "boolean" },
+        "bridgeNativeApprovals": { "type": "boolean" },
+        "bridgeTracingHandoff": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "helpSignals": { "type": "array", "items": { "type": "string" } },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}

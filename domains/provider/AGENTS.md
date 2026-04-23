@@ -16,8 +16,10 @@ provider
 ├─ docs/
 │  └─ context.mmd
 ├─ contracts/
-│  └─ codex-app-server/
-│     └─ v0.123.0/
+│  ├─ codex-app-server/
+│  │  └─ v0.123.0/
+│  └─ claude-bridge/
+│     └─ v1/
 └─ rust/
    └─ provider-domain/
 ```
@@ -66,3 +68,8 @@ provider
   - значит read-only transcript terminal pane пока остаётся честным потолком этого contour, и live stdin bridge сюда нельзя молча дотягивать.
 - Важная граница: до первого completed turn thread ещё не materialized на диск.
 - Ещё одна важная граница: на этой машине default Codex thread стартует с `dangerFullAccess`, поэтому approval-enabled turn для живого proof сейчас делает turn-level override на `approvalPolicy = untrusted` и `sandboxPolicy = readOnly`.
+
+- S05a adds a Claude bridge status boundary:
+  - `services/claude-bridge/bin/claude-bridge.mjs status --json` checks local Claude Code CLI;
+  - `domains/provider/contracts/claude-bridge/v1/RuntimeStatus.json` pins the status shape;
+  - current capabilities are discovery/CLI signals only, while turn streaming, session mirror, native approvals and tracing remain false.

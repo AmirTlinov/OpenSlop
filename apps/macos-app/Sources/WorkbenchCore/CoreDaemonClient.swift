@@ -43,6 +43,10 @@ public struct CoreDaemonClient: Sendable {
         try await SharedCoreDaemonTransport.instance.fetchGitReviewSnapshot(selectedPath: selectedPath)
     }
 
+    public func fetchClaudeRuntimeStatus() async throws -> DaemonClaudeRuntimeStatus {
+        try await SharedCoreDaemonTransport.instance.fetchClaudeRuntimeStatus()
+    }
+
     public func startCodexSession() async throws -> DaemonCodexSessionBootstrap {
         try await SharedCoreDaemonTransport.instance.startCodexSession()
     }
@@ -160,6 +164,11 @@ private actor CoreDaemonTransport {
             ),
             expecting: DaemonGitReviewSnapshot.self
         )
+    }
+
+    func fetchClaudeRuntimeStatus() throws -> DaemonClaudeRuntimeStatus {
+        try ensureRunning()
+        return try send(operation: "claude-runtime-status", expecting: DaemonClaudeRuntimeStatus.self)
     }
 
     func startCodexSession() throws -> DaemonCodexSessionBootstrap {

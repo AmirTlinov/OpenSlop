@@ -11,6 +11,7 @@
 - standalone connection-scoped `command/exec` proof lane из S04a.
 - bounded same-connection `command/exec` control proof lane из S04b.
 - read-only `git-review-snapshot` operation из S06a.
+- fail-closed `claude-runtime-status` operation из S05a.
 
 Текущая карта ответственности:
 - stdio transport между GUI и daemon;
@@ -25,4 +26,5 @@
 - bounded interactive follow-up control для standalone `codex-command-exec-control-stream`: repeated output-paced `write`, one `closeStdin`, optional `terminate`;
 - standalone PTY resize follow-up для того же bounded contour: initial `tty` + `size`, same-connection `resize`, strict `processId` check и дальнейший fail-closed dialogue;
 - честные error responses, когда session пережила restart раньше первого completed turn;
-- daemon-owned Git snapshot для Inspector: Swift не вызывает `git` сам, а только показывает typed response.
+- daemon-owned Git snapshot для Inspector: Swift не вызывает `git` сам, а только показывает typed response;
+- daemon-owned Claude runtime status: Swift не вызывает `claude` сам и не открывает Claude turn path без bridge proof.

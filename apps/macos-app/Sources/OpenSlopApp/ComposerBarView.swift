@@ -1,9 +1,13 @@
 import SwiftUI
+import WorkbenchCore
 
 struct ComposerBarView: View {
     @Binding var promptText: String
     @Binding var selectedProvider: String
     @Binding var selectedEffort: String
+    let claudeRuntimeStatus: DaemonClaudeRuntimeStatus?
+    let claudeRuntimeError: String?
+    let isClaudeRuntimeLoading: Bool
     let onSubmit: () -> Void
     let isSubmitDisabled: Bool
 
@@ -49,9 +53,10 @@ struct ComposerBarView: View {
                 .frame(width: 120)
 
                 if selectedProvider == "Claude" {
-                    Text("Claude runtime planned in S05")
+                    Text(claudeComposerStatus)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(claudeRuntimeStatus?.available == true ? Color.secondary : Color.orange)
+                        .lineLimit(1)
                 }
 
                 Spacer()
@@ -61,5 +66,21 @@ struct ComposerBarView: View {
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
         .background(.bar)
+    }
+
+    private var claudeComposerStatus: String {
+        if isClaudeRuntimeLoading {
+            return "Claude status loading…"
+        }
+        if let claudeRuntimeError, !claudeRuntimeError.isEmpty {
+            return "Claude status failed"
+        }
+        guard let claudeRuntimeStatus else {
+            return "Claude status unknown"
+        }
+        if claudeRuntimeStatus.available {
+            return "\(claudeRuntimeStatus.versionLabel) · status only"
+        }
+        return "Claude unavailable"
     }
 }

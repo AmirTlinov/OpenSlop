@@ -1,0 +1,16 @@
+{
+  "name": "@openslop/claude-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenSlop local Claude runtime bridge boundary.",
+  "bin": {
+    "openslop-claude-bridge": "./bin/claude-bridge.mjs"
+  },
+  "scripts": {
+    "status": "node ./bin/claude-bridge.mjs status --json"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

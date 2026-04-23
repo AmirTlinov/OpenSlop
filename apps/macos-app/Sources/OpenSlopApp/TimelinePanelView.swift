@@ -10,6 +10,9 @@ struct TimelinePanelView: View {
     @Binding var promptText: String
     let selectedProvider: String
     let selectedEffort: String
+    let claudeRuntimeStatus: DaemonClaudeRuntimeStatus?
+    let claudeRuntimeError: String?
+    let isClaudeRuntimeLoading: Bool
     let onStartSession: () -> Void
     let onSubmit: () -> Void
     let isStartDisabled: Bool
@@ -23,6 +26,9 @@ struct TimelinePanelView: View {
                     promptText: $promptText,
                     selectedProvider: selectedProvider,
                     selectedEffort: selectedEffort,
+                    claudeRuntimeStatus: claudeRuntimeStatus,
+                    claudeRuntimeError: claudeRuntimeError,
+                    isClaudeRuntimeLoading: isClaudeRuntimeLoading,
                     workspaceTitle: session?.workspace ?? "OpenSlop",
                     branchTitle: session?.branch ?? "main",
                     onStartSession: onStartSession,

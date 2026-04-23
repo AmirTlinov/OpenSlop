@@ -20,6 +20,7 @@ macos-app
    │  ├─ CodexCommandExecControlSurface.swift
    │  ├─ CodexTerminalSurface.swift
    │  ├─ GitReviewSnapshot.swift
+   │  ├─ ClaudeRuntimeStatus.swift
    │  ├─ RepoRootLocator.swift
    │  └─ CoreDaemonClient.swift
    ├─ OpenSlopApp/
@@ -33,6 +34,7 @@ macos-app
    │  ├─ CommandExecControlPaneView.swift
    │  ├─ GitReviewPaneView.swift
    │  ├─ TerminalPaneView.swift
+   │  ├─ ClaudeRuntimeStatusView.swift
    │  ├─ SidebarPanelView.swift
    │  ├─ TimelinePanelView.swift
    │  ├─ InspectorPanelView.swift
@@ -71,7 +73,9 @@ macos-app
    │  └─ main.swift
    ├─ OpenSlopCommandExecResizeSurfaceProbe/
    │  └─ main.swift
-   └─ OpenSlopGitReviewProbe/
+   ├─ OpenSlopGitReviewProbe/
+   │  └─ main.swift
+   └─ OpenSlopClaudeStatusProbe/
       └─ main.swift
 ```
 
@@ -119,3 +123,5 @@ macos-app
 
 - `WorkbenchStartSurfaceView.swift` materializes S01d native start/composer surface. It is presentation-only and does not add runtime truth.
 - `InspectorPanelView` now has Summary / Verify / Browser tabs. Browser and Verify tabs are honest planned/pre-harness surfaces, not live feature claims.
+
+- `WorkbenchCore/ClaudeRuntimeStatus.swift`, `ClaudeRuntimeStatusView.swift` и `OpenSlopClaudeStatusProbe` materialize S05a: GUI показывает только real Claude runtime status boundary и не открывает fake Claude turns.

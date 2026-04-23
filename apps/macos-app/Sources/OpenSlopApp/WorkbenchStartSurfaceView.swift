@@ -6,6 +6,9 @@ struct WorkbenchStartSurfaceView: View {
     @Binding var promptText: String
     let selectedProvider: String
     let selectedEffort: String
+    let claudeRuntimeStatus: DaemonClaudeRuntimeStatus?
+    let claudeRuntimeError: String?
+    let isClaudeRuntimeLoading: Bool
     let workspaceTitle: String
     let branchTitle: String
     let onStartSession: () -> Void
@@ -49,7 +52,11 @@ struct WorkbenchStartSurfaceView: View {
                     .padding(.horizontal, 18)
                     .padding(.top, 16)
                     .padding(.bottom, 14)
-                    .onSubmit(onSubmit)
+                    .onSubmit {
+                        if !isSubmitDisabled {
+                            onSubmit()
+                        }
+                    }
 
                 Divider()
 
@@ -119,7 +126,7 @@ struct WorkbenchStartSurfaceView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 12) {
-                    Button("Запустить живую Codex session", action: onStartSession)
+                    Button(startSessionButtonTitle, action: onStartSession)
                         .buttonStyle(.bordered)
                         .disabled(isStartDisabled)
                     Text(emptyState.recoveryHint)
@@ -129,9 +136,9 @@ struct WorkbenchStartSurfaceView: View {
                 }
 
                 if selectedProvider == "Claude" {
-                    Label("Claude runtime planned in S05. Сейчас живой запуск доступен только для Codex.", systemImage: "exclamationmark.triangle")
+                    Label(claudeStatusLine, systemImage: claudeStatusIcon)
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(claudeRuntimeStatus?.available == true ? Color.secondary : Color.orange)
                 }
             }
             .frame(maxWidth: 720, alignment: .leading)
@@ -140,5 +147,33 @@ struct WorkbenchStartSurfaceView: View {
         }
         .padding(.horizontal, 40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var startSessionButtonTitle: String {
+        selectedProvider == "Claude" ? "Claude turns закрыты в S05a" : "Запустить живую Codex session"
+    }
+
+    private var claudeStatusLine: String {
+        if isClaudeRuntimeLoading {
+            return "Проверяем локальный Claude runtime…"
+        }
+
+        if let claudeRuntimeError, !claudeRuntimeError.isEmpty {
+            return "Claude status failed: \(claudeRuntimeError)"
+        }
+
+        guard let claudeRuntimeStatus else {
+            return "Claude runtime status ещё не загружен. Живой запуск остаётся закрыт."
+        }
+
+        if claudeRuntimeStatus.available {
+            return "\(claudeRuntimeStatus.versionLabel) найден. S05a показывает status boundary; Claude turns ещё закрыты."
+        }
+
+        return "Claude runtime недоступен. GUI держит этот provider fail-closed."
+    }
+
+    private var claudeStatusIcon: String {
+        claudeRuntimeStatus?.available == true ? "checkmark.seal" : "exclamationmark.triangle"
     }
 }

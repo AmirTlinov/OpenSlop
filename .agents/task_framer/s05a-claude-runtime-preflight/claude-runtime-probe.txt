@@ -1,0 +1,6 @@
+/Users/amir/.local/bin/claude
+2.1.118 (Claude Code)
+/Users/amir/.volta/bin/node
+v22.22.2
+0.2.118
+2.1.118

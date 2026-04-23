@@ -1,40 +1,26 @@
 flowchart LR
-    S00[S00]
-Repo constitution --> S01[S01]
-Workbench shell
-    S00 --> S02[S02]
-Event spine
-    S02 --> S03[S03]
-Codex runtime
-    S03 --> S04[S04]
-Transcript + approvals + PTY
-    S02 --> S05[S05]
-Claude runtime
-    S02 --> S06[S06]
-Git review + artifacts
-    S01 --> S07[S07]
-Browser preview
+    S00["S00\nRepo constitution"] --> S01["S01\nWorkbench shell"]
+    S00 --> S02["S02\nEvent spine"]
+    S02 --> S03["S03\nCodex runtime"]
+    S03 --> S04["S04\nTranscript + approvals + PTY"]
+    S02 --> S05a["S05a\nClaude status"]
+    S05a --> S05["S05\nClaude runtime"]
+    S02 --> S06["S06\nGit review + artifacts"]
+    S01 --> S07["S07\nBrowser preview"]
     S02 --> S07
-    S07 --> S08[S08]
-Browser automation
-    S02 --> S09[S09]
-Harness sensors
+    S07 --> S08["S08\nBrowser automation"]
+    S02 --> S09["S09\nHarness sensors"]
     S06 --> S09
     S07 --> S09
-    S09 --> S10[S10]
-Verify + context packs
-    S02 --> S11[S11]
-Scale + search + perf
+    S09 --> S10["S10\nVerify + context packs"]
+    S02 --> S11["S11\nScale + search + perf"]
     S06 --> S11
     S10 --> S11
-    S01 --> S12[S12]
-Review + visual conformance
+    S01 --> S12["S12\nReview + visual conformance"]
     S10 --> S12
     S11 --> S12
-    S12 --> S13[S13]
-Design + accessibility polish
-    S03 --> S14[S14]
-Release engineering
+    S12 --> S13["S13\nDesign + accessibility polish"]
+    S03 --> S14["S14\nRelease engineering"]
     S05 --> S14
     S11 --> S14
     S13 --> S14

@@ -1,11 +1,11 @@
 use git_domain::load_git_review_snapshot;
 use provider_domain::{
-    CodexApprovalDecision, CodexApprovalRequest, CodexCommandExecControlRequest,
-    CodexCommandExecOutputDelta, CodexCommandExecOutputStream, CodexCommandExecParams,
-    CodexCommandExecResizeParams, CodexCommandExecResult, CodexCommandExecTerminalSize,
-    CodexCommandExecTerminateParams, CodexCommandExecWriteParams, CodexRuntimeRegistry,
-    CodexThreadBootstrap, exec_codex_command, read_codex_transcript, stream_codex_command,
-    stream_codex_command_with_control, submit_codex_turn,
+    ClaudeRuntimeStatus, CodexApprovalDecision, CodexApprovalRequest,
+    CodexCommandExecControlRequest, CodexCommandExecOutputDelta, CodexCommandExecOutputStream,
+    CodexCommandExecParams, CodexCommandExecResizeParams, CodexCommandExecResult,
+    CodexCommandExecTerminalSize, CodexCommandExecTerminateParams, CodexCommandExecWriteParams,
+    CodexRuntimeRegistry, CodexThreadBootstrap, exec_codex_command, read_codex_transcript,
+    stream_codex_command, stream_codex_command_with_control, submit_codex_turn,
 };
 use serde::{Deserialize, Serialize};
 use session_domain::{
@@ -139,6 +139,14 @@ fn main() {
         return;
     }
 
+    if args.as_slice() == ["--claude-runtime-status"] {
+        match claude_runtime_status_json(&repo_root, true) {
+            Ok(payload) => println!("{payload}"),
+            Err(error) => exit_with_error(error),
+        }
+        return;
+    }
+
     if args.len() == 3 && args[0] == "--read-codex-transcript" {
         match codex_read_transcript_json(&repo_root, &args[1], true) {
             Ok(payload) => println!("{payload}"),
@@ -188,7 +196,7 @@ fn main() {
     }
 
     eprintln!(
-        "OpenSlop core-daemon supports: --heartbeat | --query session-list | --start-codex-session | --git-review-snapshot | --read-codex-transcript <session-id> _ | --submit-codex-turn <session-id> <input> | --serve-stdio | --reset-session-store | --upsert-proof-session | --print-session-store-path"
+        "OpenSlop core-daemon supports: --heartbeat | --query session-list | --start-codex-session | --git-review-snapshot | --claude-runtime-status | --read-codex-transcript <session-id> _ | --submit-codex-turn <session-id> <input> | --serve-stdio | --reset-session-store | --upsert-proof-session | --print-session-store-path"
     );
 }
 
@@ -224,6 +232,67 @@ fn git_review_snapshot_json(
 ) -> Result<String, String> {
     let snapshot = load_git_review_snapshot(repo_root, focused_path);
     serialize_payload(&snapshot, pretty)
+}
+
+fn claude_runtime_status_json(repo_root: &Path, pretty: bool) -> Result<String, String> {
+    let status = load_claude_runtime_status(repo_root);
+    serialize_payload(&status, pretty)
+}
+
+fn load_claude_runtime_status(repo_root: &Path) -> ClaudeRuntimeStatus {
+    let bridge_script = repo_root.join("services/claude-bridge/bin/claude-bridge.mjs");
+    if !bridge_script.is_file() {
+        return ClaudeRuntimeStatus::unavailable(format!(
+            "claude-bridge script missing: {}",
+            bridge_script.display()
+        ));
+    }
+
+    let output = Command::new("node")
+        .arg(&bridge_script)
+        .args(["status", "--json"])
+        .current_dir(repo_root)
+        .output();
+
+    let output = match output {
+        Ok(output) => output,
+        Err(error) => {
+            return ClaudeRuntimeStatus::unavailable(format!(
+                "failed to launch claude-bridge via node: {error}"
+            ));
+        }
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
+    if stdout.is_empty() {
+        let reason = if stderr.is_empty() {
+            format!(
+                "claude-bridge exited without JSON, status={}",
+                output.status
+            )
+        } else {
+            format!(
+                "claude-bridge exited without JSON, status={}, stderr={stderr}",
+                output.status
+            )
+        };
+        return ClaudeRuntimeStatus::unavailable(reason);
+    }
+
+    match ClaudeRuntimeStatus::from_bridge_json(&stdout) {
+        Ok(status) if output.status.success() => status,
+        Ok(status) => ClaudeRuntimeStatus::unavailable(format!(
+            "claude-bridge exited non-zero: {}; bridge available={}; warnings={}",
+            output.status,
+            status.available,
+            status.warnings.join("; ")
+        )),
+        Err(error) => ClaudeRuntimeStatus::unavailable(format!(
+            "claude-bridge returned invalid runtime JSON: {error}; stdout={stdout}"
+        )),
+    }
 }
 
 fn codex_start_session_json(repo_root: &Path, pretty: bool) -> Result<String, String> {
@@ -825,6 +894,10 @@ fn handle_parsed_stdio_request(request: StdioRequest, repo_root: &Path) -> Strin
                 Err(message) => serialize_error(message),
             }
         }
+        "claude-runtime-status" => match claude_runtime_status_json(repo_root, false) {
+            Ok(payload) => payload,
+            Err(message) => serialize_error(message),
+        },
         "codex-start-session" => match codex_start_session_json(repo_root, false) {
             Ok(payload) => payload,
             Err(message) => serialize_error(message),

@@ -19,12 +19,17 @@ enum InspectorPanelTab: String, CaseIterable, Identifiable {
 
 struct InspectorPanelView: View {
     let cards: [InspectorCardSeed]
+    let selectedProvider: String
     let terminalSurface: DaemonCodexTerminalSurface?
     let gitReviewSnapshot: DaemonGitReviewSnapshot?
     let gitReviewError: String?
     let isGitReviewLoading: Bool
+    let claudeRuntimeStatus: DaemonClaudeRuntimeStatus?
+    let claudeRuntimeError: String?
+    let isClaudeRuntimeLoading: Bool
     @Binding var selectedTab: InspectorPanelTab
     let onRefreshGitReview: () -> Void
+    let onRefreshClaudeRuntime: () -> Void
     let onSelectGitReviewPath: (String?) -> Void
     @Binding var commandExecProofMode: CommandExecProofMode
     @Binding var commandExecStdinText: String
@@ -82,6 +87,15 @@ struct InspectorPanelView: View {
     private var summaryPane: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12) {
+                if selectedProvider == "Claude" {
+                    ClaudeRuntimeStatusView(
+                        status: claudeRuntimeStatus,
+                        errorMessage: claudeRuntimeError,
+                        isLoading: isClaudeRuntimeLoading,
+                        onRefresh: onRefreshClaudeRuntime
+                    )
+                }
+
                 GitReviewPaneView(
                     snapshot: gitReviewSnapshot,
                     errorMessage: gitReviewError,
