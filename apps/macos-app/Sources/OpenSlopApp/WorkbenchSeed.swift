@@ -67,32 +67,17 @@ struct WorkbenchSeed {
             }
         }
 
-        return [
-            TimelineItemSeed(
-                id: "projection",
-                kind: .agent,
-                title: "Session projection loaded from daemon",
-                detail: loadSummary,
-                secondaryDetail: nil,
-                prefersMonospacedDetail: false
-            ),
-            TimelineItemSeed(
-                id: "transcript",
-                kind: .tool,
-                title: "Read-only transcript lane",
-                detail: transcriptSummary,
-                secondaryDetail: nil,
-                prefersMonospacedDetail: false
-            ),
-            TimelineItemSeed(
-                id: "proof-target",
-                kind: .verify,
-                title: "S04 first proof target",
-                detail: session.map { "Выбрана session: \($0.title) [\($0.provider)]" } ?? "Ожидаем или не можем получить session list.",
-                secondaryDetail: nil,
-                prefersMonospacedDetail: false
-            ),
-        ]
+        return []
+    }
+
+    func timelineEmptyState(
+        for session: DaemonSessionSummary?,
+        transcript: DaemonCodexTranscript?
+    ) -> WorkbenchTimelineEmptyState? {
+        WorkbenchTimelineEmptyStateProjector.project(
+            selectedSessionTitle: session?.title,
+            transcriptItemCount: transcript?.items.count
+        )
     }
 
     func inspectorCards(

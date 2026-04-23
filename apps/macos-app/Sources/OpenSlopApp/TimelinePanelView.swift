@@ -6,6 +6,7 @@ struct TimelinePanelView: View {
     let loadSummary: String
     let transcriptSummary: String
     let timeline: [TimelineItemSeed]
+    let emptyState: WorkbenchTimelineEmptyState?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -18,7 +19,7 @@ struct TimelinePanelView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Label("S04", systemImage: "text.bubble.fill")
+                Label(headerBadgeTitle, systemImage: headerBadgeSystemImage)
                     .font(.caption.weight(.semibold))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
@@ -29,43 +30,69 @@ struct TimelinePanelView: View {
             Divider()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(transcriptSummary)
-                        .font(.caption)
+                if timeline.isEmpty, let emptyState {
+                    ContentUnavailableView(
+                        emptyState.title,
+                        systemImage: emptyState.systemImage,
+                        description: Text(emptyState.detail)
+                    )
+                    .padding(.horizontal, 36)
+                    .padding(.top, 72)
+
+                    Text(emptyState.recoveryHint)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
-
-                LazyVStack(alignment: .leading, spacing: 14) {
-                    ForEach(timeline) { item in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(item.kind.rawValue)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            Text(item.title)
-                                .font(.headline)
-                            Text(item.detail)
-                                .font(item.prefersMonospacedDetail ? .body.monospaced() : .body)
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-
-                            if let secondaryDetail = item.secondaryDetail, !secondaryDetail.isEmpty {
-                                Text(secondaryDetail)
-                                    .font(item.prefersMonospacedDetail ? .footnote.monospaced() : .footnote)
-                                    .foregroundStyle(.tertiary)
-                                    .textSelection(.enabled)
-                            }
-                        }
-                        .padding(16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 520)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 36)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(transcriptSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+
+                    LazyVStack(alignment: .leading, spacing: 14) {
+                        ForEach(timeline) { item in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(item.kind.rawValue)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Text(item.title)
+                                    .font(.headline)
+                                Text(item.detail)
+                                    .font(item.prefersMonospacedDetail ? .body.monospaced() : .body)
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+
+                                if let secondaryDetail = item.secondaryDetail, !secondaryDetail.isEmpty {
+                                    Text(secondaryDetail)
+                                        .font(item.prefersMonospacedDetail ? .footnote.monospaced() : .footnote)
+                                        .foregroundStyle(.tertiary)
+                                        .textSelection(.enabled)
+                                }
+                            }
+                            .padding(16)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
+                        }
+                    }
+                    .padding(20)
                 }
-                .padding(20)
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
+    }
+
+    private var headerBadgeTitle: String {
+        session?.status.capitalized ?? "Empty"
+    }
+
+    private var headerBadgeSystemImage: String {
+        session == nil ? "rectangle.stack" : "circle.fill"
     }
 
     private var headerSubtitle: String {

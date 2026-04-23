@@ -231,6 +231,10 @@ struct WorkbenchRootView: View {
                             transcriptSummary: transcriptState.summary,
                             transcript: transcript,
                             pendingApproval: pendingApproval
+                        ),
+                        emptyState: seed.timelineEmptyState(
+                            for: selectedSession,
+                            transcript: transcript
                         )
                     )
                     .frame(minWidth: 720)

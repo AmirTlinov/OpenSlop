@@ -1,0 +1,10 @@
+flowchart TD
+    ShellTruth[Existing shell truth] --> HasSession{Selected session?}
+    HasSession -- no --> NoSession[No session empty state]
+    HasSession -- yes --> HasItems{Transcript items?}
+    HasItems -- yes --> Items[Render transcript timeline items]
+    HasItems -- zero --> EmptyTranscript[Transcript empty state]
+    HasItems -- unknown --> Unavailable[Transcript unavailable state]
+    NoSession --> NativeEmpty[ContentUnavailableView]
+    EmptyTranscript --> NativeEmpty
+    Unavailable --> NativeEmpty

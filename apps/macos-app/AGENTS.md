@@ -15,6 +15,7 @@ macos-app
    │  ├─ CodexApprovalRequest.swift
    │  ├─ BoundedOutputTail.swift
    │  ├─ WorkbenchShellState.swift
+   │  ├─ WorkbenchTimelineEmptyState.swift
    │  ├─ CodexCommandExec.swift
    │  ├─ CodexCommandExecControlSurface.swift
    │  ├─ CodexTerminalSurface.swift
@@ -48,6 +49,8 @@ macos-app
    ├─ OpenSlopTerminalTailProbe/
    │  └─ main.swift
    ├─ OpenSlopShellStateProbe/
+   │  └─ main.swift
+   ├─ OpenSlopTimelineEmptyStateProbe/
    │  └─ main.swift
    ├─ OpenSlopCommandExecProbe/
    │  └─ main.swift
@@ -100,3 +103,6 @@ macos-app
 
 - `WorkbenchLayoutGeometryBridge.swift` держит узкий AppKit/SwiftUI мост для observed shell geometry. Он остаётся только native layout persistence.
 - `OpenSlopShellStateProbe` доказывает shell layout geometry save/load/sanitize и legacy default restore.
+
+- `WorkbenchTimelineEmptyStateProjector` строит center empty/unavailable state только из existing shell truth. Он запрещает synthetic S04/proof-storytelling в пустом timeline.
+- `OpenSlopTimelineEmptyStateProbe` доказывает no-session, empty-transcript, unavailable-transcript и live-transcript nil-empty-state paths.
