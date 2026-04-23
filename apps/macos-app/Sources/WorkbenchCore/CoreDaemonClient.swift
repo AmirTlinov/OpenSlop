@@ -55,6 +55,10 @@ public struct CoreDaemonClient: Sendable {
         try await SharedCoreDaemonTransport.instance.materializeClaudeProofSession(inputText: inputText)
     }
 
+    public func fetchClaudeReceiptSnapshot(sessionId: String? = nil) async throws -> DaemonClaudeReceiptSnapshot {
+        try await SharedCoreDaemonTransport.instance.fetchClaudeReceiptSnapshot(sessionId: sessionId)
+    }
+
     public func startCodexSession() async throws -> DaemonCodexSessionBootstrap {
         try await SharedCoreDaemonTransport.instance.startCodexSession()
     }
@@ -198,6 +202,17 @@ private actor CoreDaemonTransport {
                 inputText: inputText
             ),
             expecting: DaemonClaudeProofSessionMaterialization.self
+        )
+    }
+
+    func fetchClaudeReceiptSnapshot(sessionId: String?) throws -> DaemonClaudeReceiptSnapshot {
+        try ensureRunning()
+        return try send(
+            request: CoreDaemonRequest(
+                operation: "claude-receipt-snapshot",
+                sessionId: sessionId
+            ),
+            expecting: DaemonClaudeReceiptSnapshot.self
         )
     }
 

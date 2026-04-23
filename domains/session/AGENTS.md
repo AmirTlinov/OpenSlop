@@ -30,3 +30,4 @@ session
 - Domain-local skill package фиксирует локальные инварианты этого slice.
 - S05c добавляет read-only Claude receipt session summary через `upsert_runtime_session`; это не full Claude dialog lifecycle.
 - S05d сохраняет тот же singleton session id для custom receipt prompt. Это latest receipt, не история Claude turns.
+- S05e добавляет detail snapshot для этого singleton id. `session_list` остаётся summary, детали читаются отдельным daemon query.

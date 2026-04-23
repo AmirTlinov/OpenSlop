@@ -99,6 +99,8 @@ struct WorkbenchRootView: View {
     @State private var claudeRuntimeError: String?
     @State private var isClaudeRuntimeLoading = false
     @State private var isClaudeProofRunning = false
+    @State private var claudeReceiptSnapshot: DaemonClaudeReceiptSnapshot?
+    @State private var claudeReceiptError: String?
     @State private var inspectorTab: InspectorPanelTab = .summary
     @State private var commandExecContinuation: CheckedContinuation<DaemonCodexCommandExecControlRequest?, Never>?
     @State private var commandExecAllowsMoreControls = false
@@ -284,7 +286,9 @@ struct WorkbenchRootView: View {
                             loadSummary: loadState.summary,
                             transcriptSummary: transcriptState.summary,
                             transcript: transcript,
-                            pendingApproval: pendingApproval
+                            pendingApproval: pendingApproval,
+                            claudeReceiptSnapshot: claudeReceiptSnapshot,
+                            claudeReceiptError: claudeReceiptError
                         ),
                         emptyState: currentTimelineEmptyState,
                         promptText: $promptText,
@@ -312,7 +316,8 @@ struct WorkbenchRootView: View {
                                 sessionsCount: sessions.count,
                                 selectedSession: selectedSession,
                                 transcript: transcript,
-                                pendingApproval: pendingApproval
+                                pendingApproval: pendingApproval,
+                                claudeReceiptSnapshot: claudeReceiptSnapshot
                             ),
                             selectedProvider: shellState.selectedProvider,
                             terminalSurface: DaemonCodexTerminalSurfaceProjector.liveSurface(from: transcript),
@@ -622,6 +627,7 @@ struct WorkbenchRootView: View {
                 ? .loaded(summary: "Claude receipt session materialized: \(materialized.proof.resultText). Диалоговый режим остаётся закрыт.")
                 : .failed(message: "Claude receipt failed closed: \(materialized.proof.warnings.joined(separator: "; "))")
             await loadSessions(force: true, preferredSessionID: materialized.session.id)
+            await loadClaudeReceiptSnapshot(sessionID: materialized.session.id)
         } catch {
             isClaudeProofRunning = false
             transcriptState = .failed(message: error.localizedDescription)
@@ -633,19 +639,25 @@ struct WorkbenchRootView: View {
         guard let selectedSession else {
             transcript = nil
             transcriptState = .idle
+            claudeReceiptSnapshot = nil
+            claudeReceiptError = nil
             return
         }
 
         guard looksLikeLiveCodexThread(selectedSession.id) else {
             transcript = nil
-            if selectedSession.provider == "Claude" {
-                transcriptState = .unavailable(message: "Claude receipt session read-only. Диалоговый режим, resume и approvals ещё закрыты.")
+            if selectedSession.provider == "Claude", selectedSession.status.hasPrefix("receipt_") {
+                await loadClaudeReceiptSnapshot(sessionID: selectedSession.id)
                 return
             }
+            claudeReceiptSnapshot = nil
+            claudeReceiptError = nil
             transcriptState = .unavailable(message: "Эта session seeded. Нажми Запустить, чтобы создать живую Codex session.")
             return
         }
 
+        claudeReceiptSnapshot = nil
+        claudeReceiptError = nil
         if !force, transcript?.threadId == selectedSession.id {
             return
         }
@@ -661,6 +673,22 @@ struct WorkbenchRootView: View {
         } catch {
             transcript = nil
             transcriptState = transcriptUnavailableState(for: error)
+        }
+    }
+
+    @MainActor
+    private func loadClaudeReceiptSnapshot(sessionID: String) async {
+        do {
+            let snapshot = try await client.fetchClaudeReceiptSnapshot(sessionId: sessionID)
+            claudeReceiptSnapshot = snapshot
+            claudeReceiptError = nil
+            transcriptState = snapshot.proof.success
+                ? .loaded(summary: "Claude receipt snapshot loaded: \(snapshot.proof.resultText). Диалоговый режим остаётся закрыт.")
+                : .failed(message: "Claude receipt snapshot loaded as failed: \(snapshot.proof.warnings.joined(separator: "; "))")
+        } catch {
+            claudeReceiptSnapshot = nil
+            claudeReceiptError = error.localizedDescription
+            transcriptState = .unavailable(message: "Claude receipt session read-only, but detail snapshot is unavailable: \(error.localizedDescription)")
         }
     }
 

@@ -33,7 +33,9 @@ struct WorkbenchSeed {
         loadSummary: String,
         transcriptSummary: String,
         transcript: DaemonCodexTranscript?,
-        pendingApproval: DaemonCodexApprovalRequest?
+        pendingApproval: DaemonCodexApprovalRequest?,
+        claudeReceiptSnapshot: DaemonClaudeReceiptSnapshot?,
+        claudeReceiptError: String?
     ) -> [TimelineItemSeed] {
         if let pendingApproval {
             return [
@@ -50,7 +52,9 @@ struct WorkbenchSeed {
                 loadSummary: loadSummary,
                 transcriptSummary: transcriptSummary,
                 transcript: transcript,
-                pendingApproval: nil
+                pendingApproval: nil,
+                claudeReceiptSnapshot: claudeReceiptSnapshot,
+                claudeReceiptError: claudeReceiptError
             )
         }
 
@@ -68,13 +72,41 @@ struct WorkbenchSeed {
         }
 
         if let session, session.provider == "Claude", session.status.hasPrefix("receipt_") {
+            if let claudeReceiptSnapshot, claudeReceiptSnapshot.session.id == session.id {
+                return [
+                    TimelineItemSeed(
+                        id: "\(session.id)-receipt-detail",
+                        kind: .verify,
+                        title: claudeReceiptSnapshot.proof.success
+                            ? "Claude receipt proven · \(shortTimelineValue(claudeReceiptSnapshot.proof.resultText))"
+                            : "Claude receipt failed",
+                        detail: claudeReceiptDetail(for: claudeReceiptSnapshot),
+                        secondaryDetail: claudeReceiptSecondaryDetail(for: claudeReceiptSnapshot),
+                        prefersMonospacedDetail: false
+                    ),
+                ]
+            }
+
+            if let claudeReceiptError, !claudeReceiptError.isEmpty {
+                return [
+                    TimelineItemSeed(
+                        id: "\(session.id)-receipt-detail-unavailable",
+                        kind: .verify,
+                        title: "Claude receipt detail unavailable",
+                        detail: claudeReceiptError,
+                        secondaryDetail: "Read-only session summary still exists. Диалоговый режим остаётся закрыт.",
+                        prefersMonospacedDetail: false
+                    ),
+                ]
+            }
+
             return [
                 TimelineItemSeed(
                     id: "\(session.id)-receipt",
                     kind: .verify,
                     title: session.status == "receipt_proven" ? "Claude receipt proven" : "Claude receipt failed",
                     detail: session.status == "receipt_proven"
-                        ? "Один bounded Claude turn был выполнен через bridge -> core-daemon -> session_list. Это read-only receipt."
+                        ? "Daemon-owned receipt snapshot загружается. Это read-only latest receipt."
                         : "Claude receipt path завершился fail-closed. Диалоговый режим остаётся закрыт.",
                     secondaryDetail: "\(session.workspace) · \(session.branch) · \(session.status)",
                     prefersMonospacedDetail: false
@@ -100,7 +132,8 @@ struct WorkbenchSeed {
         sessionsCount: Int,
         selectedSession: DaemonSessionSummary?,
         transcript: DaemonCodexTranscript?,
-        pendingApproval: DaemonCodexApprovalRequest?
+        pendingApproval: DaemonCodexApprovalRequest?,
+        claudeReceiptSnapshot: DaemonClaudeReceiptSnapshot?
     ) -> [InspectorCardSeed] {
         var cards = [
             InspectorCardSeed(id: "projection", title: "Projection", value: projectionKind),
@@ -122,7 +155,65 @@ struct WorkbenchSeed {
             )
         }
 
+        if let claudeReceiptSnapshot {
+            cards.append(
+                InspectorCardSeed(
+                    id: "claude-receipt-result",
+                    title: "Claude receipt",
+                    value: shortTimelineValue(claudeReceiptSnapshot.proof.resultText)
+                )
+            )
+            cards.append(
+                InspectorCardSeed(
+                    id: "claude-receipt-bounds",
+                    title: "Receipt bounds",
+                    value: "\(claudeReceiptSnapshot.promptPolicy.promptBytes)/\(claudeReceiptSnapshot.promptPolicy.maxBytes) bytes · tools \(claudeReceiptSnapshot.proof.toolUseCount) · malformed \(claudeReceiptSnapshot.proof.malformedEventCount)"
+                )
+            )
+        }
+
         return cards
+    }
+
+    private func claudeReceiptDetail(for snapshot: DaemonClaudeReceiptSnapshot) -> String {
+        let proof = snapshot.proof
+        let policy = snapshot.promptPolicy
+        let model = proof.model ?? "model unknown"
+        let duration = proof.durationMs.map { "\($0) ms" } ?? "duration unknown"
+        let cost = proof.totalCostUsd.map { String(format: "$%.6f", $0) } ?? "cost unknown"
+
+        return [
+            "Result: \(proof.resultText.isEmpty ? "—" : proof.resultText)",
+            "Prompt: \(policy.promptBytes)/\(policy.maxBytes) bytes · bounded=\(policy.bounded ? "yes" : "no")",
+            "Events: \(proof.eventCount) · tools \(proof.toolUseCount) · malformed \(proof.malformedEventCount)",
+            "Runtime: \(model) · \(duration) · \(cost)",
+            "Persistence: \(proof.sessionPersistence) · timedOut=\(proof.timedOut ? "yes" : "no")",
+        ].joined(separator: "\n")
+    }
+
+    private func claudeReceiptSecondaryDetail(for snapshot: DaemonClaudeReceiptSnapshot) -> String {
+        var lines = [
+            "\(snapshot.session.workspace) · \(snapshot.session.branch) · \(snapshot.session.status)",
+            "Bridge: \(snapshot.proof.bridge.name) \(snapshot.proof.bridge.version) via \(snapshot.proof.bridge.transport)",
+            snapshot.lifecycleBoundary,
+        ]
+
+        if !snapshot.proof.warnings.isEmpty {
+            lines.append("Warnings: " + snapshot.proof.warnings.joined(separator: " · "))
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    private func shortTimelineValue(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return "—"
+        }
+        if trimmed.count <= 64 {
+            return trimmed
+        }
+        return String(trimmed.prefix(64)) + "…"
     }
 
     private func timelineKind(for rawKind: String) -> TimelineItemSeed.Kind {

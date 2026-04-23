@@ -32,6 +32,7 @@
 | `S05b-claude-turn-proof` | Первый реальный non-persistent Claude turn receipt через bridge -> daemon -> WorkbenchCore probe | S05a | done |
 | `S05c-claude-receipt-session` | Read-only Claude receipt session в `session_list` и native shell | S05b,S02 | done |
 | `S05d-claude-custom-receipt-prompt` | Custom bounded Claude receipt prompt из native GUI до daemon-owned receipt | S05c | done |
+| `S05e-claude-receipt-detail-snapshot` | Read-only daemon-owned Claude receipt detail snapshot в timeline/inspector | S05d | done |
 | `S06-git-review-artifacts` | Diff, artifacts, worktrees | S02 | planned |
 | `S06a-readonly-git-review-surface` | Read-only branch/status/diff/file preview в Inspector | S02,S01 | done |
 | `S07-browser-preview` | Встроенный native preview browser | S01,S02 | planned |

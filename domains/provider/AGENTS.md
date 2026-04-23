@@ -86,3 +86,7 @@ provider
   - daemon validates empty and oversized prompts before bridge launch;
   - successful proof still materializes only singleton `claude-turn-proof-latest`;
   - resume, history, native approvals, platform tools and tracing remain out of scope.
+- S05e adds read-only receipt detail snapshot:
+  - materialization stores latest proof details in repo-local daemon state;
+  - Swift fetches `claude-receipt-snapshot` and renders proof bounds;
+  - this is not Claude transcript/history.

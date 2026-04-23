@@ -2,7 +2,7 @@ PYTHON ?= python3
 SWIFT ?= swift
 CARGO ?= cargo
 
-.PHONY: doctor repo-lint daemon-build daemon-heartbeat daemon-query-session-list daemon-start-codex-session daemon-read-codex-transcript daemon-submit-codex-turn daemon-claude-turn-proof daemon-claude-materialize-proof-session daemon-reset-session-store daemon-upsert-proof-session daemon-print-session-store-path macos-build probe-session-list probe-codex-session probe-codex-turn probe-codex-approval probe-codex-terminal-interaction probe-codex-terminal-surface probe-codex-terminal-tail probe-shell-state probe-timeline-empty-state probe-codex-terminal-interaction-witness probe-codex-live-transcript-control-witness probe-codex-command-exec probe-codex-command-exec-control probe-codex-command-exec-control-surface probe-codex-command-exec-control-negative probe-codex-command-exec-control-timeout probe-codex-command-exec-interactive probe-codex-command-exec-resize probe-codex-command-exec-resize-surface probe-git-review probe-claude-runtime-status probe-claude-turn-proof probe-claude-receipt-session probe-claude-custom-receipt smoke smoke-codex-session smoke-codex-turn smoke-codex-approval smoke-codex-terminal-interaction smoke-codex-terminal-surface smoke-codex-terminal-tail smoke-shell-state smoke-timeline-empty-state smoke-codex-terminal-interaction-witness smoke-codex-live-transcript-control-witness smoke-codex-command-exec smoke-codex-command-exec-control smoke-codex-command-exec-control-surface smoke-codex-command-exec-control-negative smoke-codex-command-exec-control-timeout smoke-codex-command-exec-interactive smoke-codex-command-exec-resize smoke-codex-command-exec-resize-surface smoke-git-review smoke-claude-runtime-status smoke-claude-turn-proof smoke-claude-receipt-session smoke-claude-custom-receipt
+.PHONY: doctor repo-lint daemon-build daemon-heartbeat daemon-query-session-list daemon-start-codex-session daemon-read-codex-transcript daemon-submit-codex-turn daemon-claude-turn-proof daemon-claude-materialize-proof-session daemon-claude-receipt-snapshot daemon-reset-session-store daemon-upsert-proof-session daemon-print-session-store-path macos-build probe-session-list probe-codex-session probe-codex-turn probe-codex-approval probe-codex-terminal-interaction probe-codex-terminal-surface probe-codex-terminal-tail probe-shell-state probe-timeline-empty-state probe-codex-terminal-interaction-witness probe-codex-live-transcript-control-witness probe-codex-command-exec probe-codex-command-exec-control probe-codex-command-exec-control-surface probe-codex-command-exec-control-negative probe-codex-command-exec-control-timeout probe-codex-command-exec-interactive probe-codex-command-exec-resize probe-codex-command-exec-resize-surface probe-git-review probe-claude-runtime-status probe-claude-turn-proof probe-claude-receipt-session probe-claude-custom-receipt probe-claude-receipt-snapshot smoke smoke-codex-session smoke-codex-turn smoke-codex-approval smoke-codex-terminal-interaction smoke-codex-terminal-surface smoke-codex-terminal-tail smoke-shell-state smoke-timeline-empty-state smoke-codex-terminal-interaction-witness smoke-codex-live-transcript-control-witness smoke-codex-command-exec smoke-codex-command-exec-control smoke-codex-command-exec-control-surface smoke-codex-command-exec-control-negative smoke-codex-command-exec-control-timeout smoke-codex-command-exec-interactive smoke-codex-command-exec-resize smoke-codex-command-exec-resize-surface smoke-git-review smoke-claude-runtime-status smoke-claude-turn-proof smoke-claude-receipt-session smoke-claude-custom-receipt smoke-claude-receipt-snapshot
 
 doctor: repo-lint
 
@@ -32,6 +32,9 @@ daemon-claude-turn-proof: daemon-build
 
 daemon-claude-materialize-proof-session: daemon-build
 	./target/debug/core-daemon --claude-materialize-proof-session
+
+daemon-claude-receipt-snapshot: daemon-build
+	./target/debug/core-daemon --claude-receipt-snapshot
 
 daemon-reset-session-store: daemon-build
 	./target/debug/core-daemon --reset-session-store
@@ -111,6 +114,9 @@ probe-claude-receipt-session: daemon-build
 probe-claude-custom-receipt: daemon-build
 	$(SWIFT) run --package-path apps/macos-app OpenSlopClaudeCustomReceiptProbe
 
+probe-claude-receipt-snapshot: daemon-build
+	$(SWIFT) run --package-path apps/macos-app OpenSlopClaudeReceiptSnapshotProbe
+
 probe-codex-terminal-interaction-witness:
 	$(PYTHON) domains/provider/contracts/codex-app-server/v0.123.0/witnesses/terminal_interaction_witness.py
 
@@ -160,6 +166,8 @@ smoke-claude-turn-proof: doctor daemon-build macos-build probe-claude-turn-proof
 smoke-claude-receipt-session: doctor daemon-build macos-build probe-claude-receipt-session
 
 smoke-claude-custom-receipt: doctor daemon-build macos-build probe-claude-custom-receipt
+
+smoke-claude-receipt-snapshot: doctor daemon-build macos-build probe-claude-receipt-snapshot
 
 smoke-codex-terminal-interaction-witness: doctor probe-codex-terminal-interaction-witness
 

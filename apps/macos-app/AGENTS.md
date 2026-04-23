@@ -24,6 +24,7 @@ macos-app
    │  ├─ ClaudeTurnProofResult.swift
    │  ├─ ClaudeProofSessionMaterialization.swift
    │  ├─ ClaudeReceiptPromptPolicy.swift
+   │  ├─ ClaudeReceiptSnapshot.swift
    │  ├─ RepoRootLocator.swift
    │  └─ CoreDaemonClient.swift
    ├─ OpenSlopApp/
@@ -84,7 +85,9 @@ macos-app
    │  └─ main.swift
    ├─ OpenSlopClaudeReceiptSessionProbe/
    │  └─ main.swift
-   └─ OpenSlopClaudeCustomReceiptProbe/
+   ├─ OpenSlopClaudeCustomReceiptProbe/
+   │  └─ main.swift
+   └─ OpenSlopClaudeReceiptSnapshotProbe/
       └─ main.swift
 ```
 
@@ -137,3 +140,4 @@ macos-app
 - `WorkbenchCore/ClaudeTurnProofResult.swift` и `OpenSlopClaudeTurnProofProbe` materialize S05b: один реальный non-persistent Claude turn проходит через daemon. GUI dialog для Claude всё ещё закрыт.
 - `WorkbenchCore/ClaudeProofSessionMaterialization.swift` и `OpenSlopClaudeReceiptSessionProbe` materialize S05c: Claude receipt можно создать как read-only session summary. Submit/dialog/resume для Claude остаются закрыты.
 - `WorkbenchCore/ClaudeReceiptPromptPolicy.swift` и `OpenSlopClaudeCustomReceiptProbe` materialize S05d: пользовательский bounded Claude receipt prompt проходит через daemon-owned validation и real proof, но full Claude lifecycle остаётся закрыт.
+- `WorkbenchCore/ClaudeReceiptSnapshot.swift` и `OpenSlopClaudeReceiptSnapshotProbe` materialize S05e: selected Claude receipt session читает daemon-owned latest snapshot и показывает реальные proof bounds в timeline/inspector.

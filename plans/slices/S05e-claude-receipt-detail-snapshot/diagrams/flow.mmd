@@ -1,0 +1,9 @@
+flowchart LR
+    M[claude-materialize-proof-session] --> P[Claude proof result]
+    P --> U[Upsert read-only session summary]
+    P --> S[Save latest receipt snapshot]
+    UI[Selected Claude receipt session] --> Q[WorkbenchCore fetchClaudeReceiptSnapshot]
+    Q --> D[core-daemon claude-receipt-snapshot]
+    D --> S
+    S --> T[Timeline receipt detail]
+    S --> I[Inspector receipt bounds]

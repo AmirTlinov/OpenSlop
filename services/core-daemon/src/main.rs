@@ -14,6 +14,7 @@ use session_domain::{
 };
 use std::cell::RefCell;
 use std::env;
+use std::fs;
 use std::io::{self, BufRead, Write};
 use std::os::fd::{AsRawFd, RawFd};
 use std::path::{Path, PathBuf};
@@ -24,6 +25,7 @@ use std::time::{Duration, Instant};
 const COMMAND_EXEC_CONTROL_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 const CLAUDE_TURN_PROOF_PROMPT: &str = "Reply with exactly OPENSLOP_CLAUDE_OK and nothing else.";
 const CLAUDE_RECEIPT_PROMPT_MAX_BYTES: usize = 512;
+const CLAUDE_RECEIPT_SESSION_ID: &str = "claude-turn-proof-latest";
 
 static CODEX_RUNTIME_REGISTRY: LazyLock<Mutex<CodexRuntimeRegistry>> =
     LazyLock::new(|| Mutex::new(CodexRuntimeRegistry::new()));
@@ -116,6 +118,25 @@ struct ClaudeProofSessionMaterializationResponse {
     proof: ClaudeTurnProofResult,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClaudeReceiptSnapshotResponse {
+    kind: String,
+    session: SessionSummary,
+    proof: ClaudeTurnProofResult,
+    prompt_policy: ClaudeReceiptPromptPolicySnapshot,
+    storage_path: String,
+    lifecycle_boundary: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClaudeReceiptPromptPolicySnapshot {
+    max_bytes: usize,
+    prompt_bytes: usize,
+    bounded: bool,
+}
+
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     let repo_root = repo_root();
@@ -173,6 +194,14 @@ fn main() {
         return;
     }
 
+    if args.as_slice() == ["--claude-receipt-snapshot"] {
+        match claude_receipt_snapshot_json(&repo_root, None, true) {
+            Ok(payload) => println!("{payload}"),
+            Err(error) => exit_with_error(error),
+        }
+        return;
+    }
+
     if args.len() == 3 && args[0] == "--read-codex-transcript" {
         match codex_read_transcript_json(&repo_root, &args[1], true) {
             Ok(payload) => println!("{payload}"),
@@ -222,7 +251,7 @@ fn main() {
     }
 
     eprintln!(
-        "OpenSlop core-daemon supports: --heartbeat | --query session-list | --start-codex-session | --git-review-snapshot | --claude-runtime-status | --claude-turn-proof | --claude-materialize-proof-session | --read-codex-transcript <session-id> _ | --submit-codex-turn <session-id> <input> | --serve-stdio | --reset-session-store | --upsert-proof-session | --print-session-store-path"
+        "OpenSlop core-daemon supports: --heartbeat | --query session-list | --start-codex-session | --git-review-snapshot | --claude-runtime-status | --claude-turn-proof | --claude-materialize-proof-session | --claude-receipt-snapshot | --read-codex-transcript <session-id> _ | --submit-codex-turn <session-id> <input> | --serve-stdio | --reset-session-store | --upsert-proof-session | --print-session-store-path"
     );
 }
 
@@ -284,6 +313,7 @@ fn claude_materialize_proof_session_json(
     let proof = load_claude_turn_proof(repo_root, &bounded_prompt);
     let session = map_claude_proof_to_session(repo_root, &proof);
     upsert_runtime_session(repo_root, &session).map_err(|error| error.to_string())?;
+    save_claude_receipt_snapshot(repo_root, &session, &proof)?;
     serialize_payload(
         &ClaudeProofSessionMaterializationResponse {
             kind: "claude_proof_session_materialized".to_string(),
@@ -292,6 +322,72 @@ fn claude_materialize_proof_session_json(
         },
         pretty,
     )
+}
+
+fn claude_receipt_snapshot_json(
+    repo_root: &Path,
+    session_id: Option<&str>,
+    pretty: bool,
+) -> Result<String, String> {
+    let snapshot = load_claude_receipt_snapshot(repo_root)?;
+    if let Some(session_id) = session_id {
+        if session_id != snapshot.session.id {
+            return Err(format!(
+                "Claude receipt snapshot mismatch: requested={session_id} available={}",
+                snapshot.session.id
+            ));
+        }
+    }
+    serialize_payload(&snapshot, pretty)
+}
+
+fn save_claude_receipt_snapshot(
+    repo_root: &Path,
+    session: &SessionSummary,
+    proof: &ClaudeTurnProofResult,
+) -> Result<(), String> {
+    let snapshot = build_claude_receipt_snapshot(repo_root, session, proof);
+    let path = claude_receipt_snapshot_path(repo_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let payload = serde_json::to_string_pretty(&snapshot).map_err(|error| error.to_string())?;
+    fs::write(&path, payload).map_err(|error| error.to_string())
+}
+
+fn load_claude_receipt_snapshot(repo_root: &Path) -> Result<ClaudeReceiptSnapshotResponse, String> {
+    let path = claude_receipt_snapshot_path(repo_root);
+    let payload = fs::read_to_string(&path)
+        .map_err(|error| format!("Claude receipt snapshot unavailable: {error}"))?;
+    serde_json::from_str(&payload)
+        .map_err(|error| format!("Claude receipt snapshot invalid: {error}"))
+}
+
+fn build_claude_receipt_snapshot(
+    repo_root: &Path,
+    session: &SessionSummary,
+    proof: &ClaudeTurnProofResult,
+) -> ClaudeReceiptSnapshotResponse {
+    ClaudeReceiptSnapshotResponse {
+        kind: "claude_receipt_snapshot".to_string(),
+        session: session.clone(),
+        proof: proof.clone(),
+        prompt_policy: ClaudeReceiptPromptPolicySnapshot {
+            max_bytes: CLAUDE_RECEIPT_PROMPT_MAX_BYTES,
+            prompt_bytes: proof.prompt_bytes,
+            bounded: proof.prompt_bytes <= CLAUDE_RECEIPT_PROMPT_MAX_BYTES,
+        },
+        storage_path: claude_receipt_snapshot_path(repo_root)
+            .display()
+            .to_string(),
+        lifecycle_boundary:
+            "read-only latest receipt; no Claude dialog, resume, approvals, tools or tracing"
+                .to_string(),
+    }
+}
+
+fn claude_receipt_snapshot_path(repo_root: &Path) -> PathBuf {
+    repo_root.join(".openslop/state/claude-receipt-latest.json")
 }
 
 fn bounded_claude_receipt_prompt(input_text: &str) -> Result<String, String> {
@@ -960,7 +1056,7 @@ fn map_claude_proof_to_session(repo_root: &Path, proof: &ClaudeTurnProofResult) 
     };
 
     SessionSummary {
-        id: "claude-turn-proof-latest".to_string(),
+        id: CLAUDE_RECEIPT_SESSION_ID.to_string(),
         title,
         workspace: workspace_name(repo_root),
         branch: current_branch(repo_root),
@@ -1107,6 +1203,12 @@ fn handle_parsed_stdio_request(request: StdioRequest, repo_root: &Path) -> Strin
                 .as_deref()
                 .unwrap_or(CLAUDE_TURN_PROOF_PROMPT);
             match claude_materialize_proof_session_json(repo_root, input_text, false) {
+                Ok(payload) => payload,
+                Err(message) => serialize_error(message),
+            }
+        }
+        "claude-receipt-snapshot" => {
+            match claude_receipt_snapshot_json(repo_root, request.session_id.as_deref(), false) {
                 Ok(payload) => payload,
                 Err(message) => serialize_error(message),
             }
@@ -1457,6 +1559,78 @@ mod tests {
         assert_eq!(session.provider, "Claude");
         assert_eq!(session.status, "receipt_proven");
         assert!(session.title.contains("OPENSLOP_CLAUDE_OK"));
+    }
+
+    #[test]
+    fn stores_and_reads_claude_receipt_snapshot() {
+        let temp = tempdir().expect("temp dir should exist");
+        let proof = ClaudeTurnProofResult {
+            kind: "claude_turn_proof_result".to_string(),
+            runtime: "claude-code-cli".to_string(),
+            success: true,
+            runtime_available: true,
+            bridge: provider_domain::ClaudeBridgeSummary {
+                name: "claude-bridge".to_string(),
+                version: "0.2.0".to_string(),
+                transport: "stdio-json".to_string(),
+            },
+            model: Some("claude-haiku-4-5-20251001".to_string()),
+            session_id: Some("claude-session".to_string()),
+            result_text: "OPENSLOP_CLAUDE_DETAIL_OK".to_string(),
+            assistant_text: "OPENSLOP_CLAUDE_DETAIL_OK".to_string(),
+            event_count: 5,
+            event_types: vec!["assistant".to_string(), "result:success".to_string()],
+            tool_use_count: 0,
+            malformed_event_count: 0,
+            session_persistence: "disabled".to_string(),
+            total_cost_usd: Some(0.001),
+            duration_ms: Some(1000),
+            exit_code: Some(0),
+            signal: None,
+            timed_out: false,
+            prompt_bytes: 62,
+            warnings: vec![],
+        };
+        let session = map_claude_proof_to_session(temp.path(), &proof);
+
+        save_claude_receipt_snapshot(temp.path(), &session, &proof)
+            .expect("snapshot should persist");
+        let payload = claude_receipt_snapshot_json(temp.path(), Some(&session.id), false)
+            .expect("snapshot should read");
+        let snapshot: ClaudeReceiptSnapshotResponse =
+            serde_json::from_str(&payload).expect("snapshot json should decode");
+
+        assert_eq!(snapshot.kind, "claude_receipt_snapshot");
+        assert_eq!(snapshot.session.id, CLAUDE_RECEIPT_SESSION_ID);
+        assert_eq!(snapshot.proof.result_text, "OPENSLOP_CLAUDE_DETAIL_OK");
+        assert_eq!(
+            snapshot.prompt_policy.max_bytes,
+            CLAUDE_RECEIPT_PROMPT_MAX_BYTES
+        );
+        assert_eq!(snapshot.prompt_policy.prompt_bytes, 62);
+        assert!(snapshot.prompt_policy.bounded);
+        assert!(
+            snapshot
+                .lifecycle_boundary
+                .contains("read-only latest receipt")
+        );
+    }
+
+    #[test]
+    fn rejects_claude_receipt_snapshot_session_mismatch() {
+        let temp = tempdir().expect("temp dir should exist");
+        let proof = ClaudeTurnProofResult::unavailable("synthetic failed proof");
+        let session = map_claude_proof_to_session(temp.path(), &proof);
+
+        save_claude_receipt_snapshot(temp.path(), &session, &proof)
+            .expect("snapshot should persist");
+        let response = handle_stdio_request(
+            r#"{"operation":"claude-receipt-snapshot","sessionId":"wrong-session"}"#,
+            temp.path(),
+        );
+
+        assert!(response.contains("\"kind\":\"error\""));
+        assert!(response.contains("Claude receipt snapshot mismatch"));
     }
 
     #[test]

@@ -31,6 +31,7 @@ let package = Package(
         .executable(name: "OpenSlopClaudeTurnProofProbe", targets: ["OpenSlopClaudeTurnProofProbe"]),
         .executable(name: "OpenSlopClaudeReceiptSessionProbe", targets: ["OpenSlopClaudeReceiptSessionProbe"]),
         .executable(name: "OpenSlopClaudeCustomReceiptProbe", targets: ["OpenSlopClaudeCustomReceiptProbe"]),
+        .executable(name: "OpenSlopClaudeReceiptSnapshotProbe", targets: ["OpenSlopClaudeReceiptSnapshotProbe"]),
     ],
     targets: [
         .target(
@@ -151,6 +152,11 @@ let package = Package(
             name: "OpenSlopClaudeCustomReceiptProbe",
             dependencies: ["WorkbenchCore"],
             path: "Sources/OpenSlopClaudeCustomReceiptProbe"
+        ),
+        .executableTarget(
+            name: "OpenSlopClaudeReceiptSnapshotProbe",
+            dependencies: ["WorkbenchCore"],
+            path: "Sources/OpenSlopClaudeReceiptSnapshotProbe"
         ),
     ]
 )
