@@ -34,19 +34,31 @@ struct CoreDaemonRequest: Codable, Sendable {
     let inputText: String?
     let approvalId: String?
     let approvalDecision: String?
+    let command: [String]?
+    let cwd: String?
+    let processId: String?
+    let streamStdoutStderr: Bool?
 
     init(
         operation: String,
         sessionId: String? = nil,
         inputText: String? = nil,
         approvalId: String? = nil,
-        approvalDecision: String? = nil
+        approvalDecision: String? = nil,
+        command: [String]? = nil,
+        cwd: String? = nil,
+        processId: String? = nil,
+        streamStdoutStderr: Bool? = nil
     ) {
         self.operation = operation
         self.sessionId = sessionId
         self.inputText = inputText
         self.approvalId = approvalId
         self.approvalDecision = approvalDecision
+        self.command = command
+        self.cwd = cwd
+        self.processId = processId
+        self.streamStdoutStderr = streamStdoutStderr
     }
 }
 

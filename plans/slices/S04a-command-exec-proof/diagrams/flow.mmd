@@ -1,0 +1,13 @@
+flowchart LR
+    App[OpenSlopCommandExecProbe] --> Client[WorkbenchCore CoreDaemonClient]
+    Client --> Daemon[core-daemon --serve-stdio]
+    Daemon --> Provider[provider-domain]
+    Provider --> Codex[codex app-server]
+    Codex -->|buffered| Final[final stdout stderr exitCode]
+    Codex -->|streaming| Delta[command/exec outputDelta]
+    Delta --> Daemon
+    Daemon --> Event[codex_command_exec_output_event]
+    Event --> Client
+    Final --> Daemon
+    Daemon --> Result[codex_command_exec_result]
+    Result --> Client

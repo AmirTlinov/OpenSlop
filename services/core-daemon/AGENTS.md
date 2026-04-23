@@ -8,6 +8,7 @@
 - daemon-owned streaming transcript lane из текущего шага S04.
 - nested stdio approval dialogue для live Codex turns из текущего approval sub-slice S04.
 - typed `commandExecution` transcript surface поверх того же streaming contour.
+- standalone connection-scoped `command/exec` proof lane из S04a.
 
 Текущая карта ответственности:
 - stdio transport между GUI и daemon;
@@ -16,4 +17,5 @@
 - streaming successive transcript snapshots во время активного turn;
 - transport для typed command snapshots без отдельного PTY surface: daemon просто ретранслирует enriched provider snapshot;
 - native approval event для активного Codex turn и ожидание решения по тому же stdio transport;
+- raw `codex-command-exec-stream` output events и final `codex-command-exec` result без записи этого contour в `session_list`;
 - честные error responses, когда session пережила restart раньше первого completed turn.

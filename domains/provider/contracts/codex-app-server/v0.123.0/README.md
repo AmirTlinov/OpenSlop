@@ -1,6 +1,6 @@
 # Codex app-server contract subset — v0.123.0
 
-Это pinned subset реального `codex app-server` контракта для S03 и текущего узкого шага S04.
+Это pinned subset реального `codex app-server` контракта для S03, текущего transcript contour S04 и standalone `command/exec` proof lane S04a.
 
 Дата генерации: 2026-04-23  
 Проверенный binary: `codex-cli 0.123.0`
@@ -18,6 +18,8 @@ codex app-server generate-json-schema --out /tmp/openslop-codex-schema
 - `thread/read` request/response;
 - `thread/resume` request/response;
 - `turn/start` request/response.
+- standalone `command/exec` request/response;
+- `command/exec/outputDelta` notification;
 - `ServerRequest` для server-initiated approval requests;
 - `ServerNotification` для live transcript overlay;
 - `CommandExecutionRequestApproval*`;
@@ -56,3 +58,18 @@ codex app-server generate-json-schema --out /tmp/openslop-codex-schema
   - provider/core-daemon/Swift теперь умеют довозить raw `terminalInteraction` как live `terminalStdin` на существующем `command` item;
   - `make smoke-codex-terminal-interaction` подтверждает этот passthrough end-to-end;
   - ordinary readback не используется как источник истины для этого сигнала и в текущем live proof вообще вернул `readback_command_items=0`.
+
+Важная S04a-specific реальность:
+- `command/exec` живёт вне `thread/start`, `turn/start`, transcript snapshot и `session_list` truth.
+- Текущий repo-local subset закреплён файлами:
+  - `v2/CommandExecParams.json`
+  - `v2/CommandExecResponse.json`
+  - `v2/CommandExecOutputDeltaNotification.json`
+- Buffered `command/exec` возвращает `stdout`, `stderr` и `exitCode` в final response.
+- Streaming `command/exec` шлёт `command/exec/outputDelta` как connection-scoped notifications; streamed bytes не дублируются в final response.
+- Текущий продуктовый proof для этого contour ограничен строго:
+  - `provider-domain` поднимает свежий `codex app-server`, делает `initialize`, вызывает standalone `command/exec`;
+  - `core-daemon` ретранслирует raw output deltas наружу по своему stdio transport;
+  - `WorkbenchCore` и `OpenSlopCommandExecProbe` доказывают buffered и streaming semantics;
+  - write / resize / terminate, reconnect, transcript readback и PTY pane сюда пока не заявлены.
+- Текущий proof не заявляет long-running guarantee сверх локального timeout window этого слайса. Для действительно долгих интерактивных процессов нужен отдельный PTY/runtime slice.

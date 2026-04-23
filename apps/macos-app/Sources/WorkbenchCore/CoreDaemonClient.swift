@@ -65,6 +65,27 @@ public struct CoreDaemonClient: Sendable {
         )
     }
 
+    public func execCodexCommand(
+        command: [String],
+        cwd: String? = nil
+    ) async throws -> DaemonCodexCommandExecResult {
+        try await SharedCoreDaemonTransport.instance.execCodexCommand(command: command, cwd: cwd)
+    }
+
+    public func streamCodexCommand(
+        command: [String],
+        cwd: String? = nil,
+        processId: String,
+        onOutput: @escaping @Sendable (DaemonCodexCommandExecOutputEvent) async -> Void
+    ) async throws -> DaemonCodexCommandExecResult {
+        try await SharedCoreDaemonTransport.instance.streamCodexCommand(
+            command: command,
+            cwd: cwd,
+            processId: processId,
+            onOutput: onOutput
+        )
+    }
+
     public func daemonProcessIdentifier() async throws -> Int32 {
         try await SharedCoreDaemonTransport.instance.daemonProcessIdentifier()
     }
@@ -152,6 +173,60 @@ private actor CoreDaemonTransport {
             }
 
             if let decoded = try? JSONDecoder().decode(DaemonCodexTranscript.self, from: response) {
+                return decoded
+            }
+
+            if let errorResponse = try? JSONDecoder().decode(CoreDaemonErrorResponse.self, from: response) {
+                throw CoreDaemonClientError.invalidResponse(errorResponse.message)
+            }
+
+            throw CoreDaemonClientError.decodeFailed(String(decoding: response, as: UTF8.self))
+        }
+    }
+
+    func execCodexCommand(
+        command: [String],
+        cwd: String?
+    ) throws -> DaemonCodexCommandExecResult {
+        try ensureRunning()
+        return try send(
+            request: CoreDaemonRequest(
+                operation: "codex-command-exec",
+                command: command,
+                cwd: cwd
+            ),
+            expecting: DaemonCodexCommandExecResult.self
+        )
+    }
+
+    func streamCodexCommand(
+        command: [String],
+        cwd: String?,
+        processId: String,
+        onOutput: @escaping @Sendable (DaemonCodexCommandExecOutputEvent) async -> Void
+    ) async throws -> DaemonCodexCommandExecResult {
+        try ensureRunning()
+        try sendRaw(
+            request: CoreDaemonRequest(
+                operation: "codex-command-exec-stream",
+                command: command,
+                cwd: cwd,
+                processId: processId,
+                streamStdoutStderr: true
+            )
+        )
+
+        while true {
+            let response = try readResponseLine()
+
+            if let outputEvent = try? JSONDecoder().decode(DaemonCodexCommandExecOutputEvent.self, from: response),
+               outputEvent.kind == "codex_command_exec_output_event"
+            {
+                await onOutput(outputEvent)
+                continue
+            }
+
+            if let decoded = try? JSONDecoder().decode(DaemonCodexCommandExecResult.self, from: response) {
                 return decoded
             }
 

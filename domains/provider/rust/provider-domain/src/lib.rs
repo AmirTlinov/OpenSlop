@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 const TRANSPORT: &str = "stdio";
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 const TURN_COMPLETION_TIMEOUT: Duration = Duration::from_secs(45);
+const COMMAND_EXEC_TIMEOUT: Duration = Duration::from_secs(45);
 const TURN_POLL_INTERVAL: Duration = Duration::from_millis(800);
 const STREAM_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const SUPPRESSED_NOTIFICATION_METHODS: &[&str] =
@@ -98,6 +99,39 @@ pub struct CodexApprovalRequest {
     pub grant_root: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexCommandExecParams {
+    pub command: Vec<String>,
+    pub cwd: Option<String>,
+    pub process_id: Option<String>,
+    pub stream_stdout_stderr: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexCommandExecResult {
+    pub exit_code: i32,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CodexCommandExecOutputStream {
+    Stdout,
+    Stderr,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexCommandExecOutputDelta {
+    pub process_id: String,
+    pub stream: CodexCommandExecOutputStream,
+    pub delta_base64: String,
+    pub cap_reached: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum CodexApprovalDecision {
@@ -140,6 +174,9 @@ pub enum CodexRuntimeError {
     },
     UnsupportedServerRequest {
         method: String,
+    },
+    InvalidCommandExecParams {
+        message: String,
     },
     StreamCallbackFailed {
         message: String,
@@ -208,6 +245,9 @@ impl Display for CodexRuntimeError {
                     "codex app-server прислал пока не поддержанный server request: {method}"
                 )
             }
+            CodexRuntimeError::InvalidCommandExecParams { message } => {
+                write!(f, "невалидные command/exec params: {message}")
+            }
             CodexRuntimeError::StreamCallbackFailed { message } => {
                 write!(f, "не удалось отдать streaming snapshot наружу: {message}")
             }
@@ -252,6 +292,27 @@ pub fn submit_codex_turn(
 ) -> Result<CodexTranscriptSnapshot, CodexRuntimeError> {
     let binary = codex_binary();
     submit_codex_turn_with_binary(repo_root, &binary, thread_id, input_text)
+}
+
+pub fn exec_codex_command(
+    repo_root: &Path,
+    params: &CodexCommandExecParams,
+) -> Result<CodexCommandExecResult, CodexRuntimeError> {
+    let binary = codex_binary();
+    exec_codex_command_with_binary(repo_root, &binary, params)
+}
+
+pub fn stream_codex_command<F, E>(
+    repo_root: &Path,
+    params: &CodexCommandExecParams,
+    on_output: F,
+) -> Result<CodexCommandExecResult, CodexRuntimeError>
+where
+    F: FnMut(CodexCommandExecOutputDelta) -> Result<(), E>,
+    E: Display,
+{
+    let binary = codex_binary();
+    stream_codex_command_with_binary(repo_root, &binary, params, on_output)
 }
 
 impl Default for CodexRuntimeRegistry {
@@ -454,6 +515,35 @@ pub fn submit_codex_turn_with_binary(
     process.wait_for_terminal_transcript(thread_id)
 }
 
+pub fn exec_codex_command_with_binary(
+    repo_root: &Path,
+    binary: &Path,
+    params: &CodexCommandExecParams,
+) -> Result<CodexCommandExecResult, CodexRuntimeError> {
+    validate_command_exec_params(params, false)?;
+
+    let mut process = CodexAppServerProcess::launch(repo_root, binary)?;
+    process.initialize()?;
+    process.exec_command(params)
+}
+
+pub fn stream_codex_command_with_binary<F, E>(
+    repo_root: &Path,
+    binary: &Path,
+    params: &CodexCommandExecParams,
+    on_output: F,
+) -> Result<CodexCommandExecResult, CodexRuntimeError>
+where
+    F: FnMut(CodexCommandExecOutputDelta) -> Result<(), E>,
+    E: Display,
+{
+    validate_command_exec_params(params, true)?;
+
+    let mut process = CodexAppServerProcess::launch(repo_root, binary)?;
+    process.initialize()?;
+    process.stream_command(params, on_output)
+}
+
 fn capability_snapshot() -> CodexCapabilitySnapshot {
     CodexCapabilitySnapshot {
         initialize: true,
@@ -507,6 +597,27 @@ struct CodexAppServerProcess {
 type ApprovalHandler<'a> =
     dyn FnMut(CodexApprovalRequest) -> Result<CodexApprovalDecision, CodexRuntimeError> + 'a;
 type NotificationHandler<'a> = dyn FnMut(&str, &Value) -> Result<(), CodexRuntimeError> + 'a;
+
+#[derive(Debug, Clone, Copy)]
+struct RequestTiming {
+    response_timeout: Duration,
+    extend_timeout_after_server_request: Duration,
+    extend_timeout_after_notification: Option<Duration>,
+}
+
+impl RequestTiming {
+    const DEFAULT: Self = Self {
+        response_timeout: RESPONSE_TIMEOUT,
+        extend_timeout_after_server_request: TURN_COMPLETION_TIMEOUT,
+        extend_timeout_after_notification: None,
+    };
+
+    const COMMAND_EXEC_STREAMING: Self = Self {
+        response_timeout: COMMAND_EXEC_TIMEOUT,
+        extend_timeout_after_server_request: COMMAND_EXEC_TIMEOUT,
+        extend_timeout_after_notification: Some(COMMAND_EXEC_TIMEOUT),
+    };
+}
 
 #[derive(Debug, Clone)]
 struct LiveToolActivity {
@@ -587,7 +698,10 @@ impl LiveToolActivityOverlay {
             return;
         }
 
-        let entry = activity.entry.terminal_stdin.get_or_insert_with(String::new);
+        let entry = activity
+            .entry
+            .terminal_stdin
+            .get_or_insert_with(String::new);
         entry.push_str(stdin);
     }
 
@@ -775,6 +889,42 @@ impl CodexAppServerProcess {
         });
 
         self.request_parse(2, "thread/start", &params)
+    }
+
+    fn exec_command(
+        &mut self,
+        params: &CodexCommandExecParams,
+    ) -> Result<CodexCommandExecResult, CodexRuntimeError> {
+        self.request_parse(2, "command/exec", params)
+    }
+
+    fn stream_command<F, E>(
+        &mut self,
+        params: &CodexCommandExecParams,
+        mut on_output: F,
+    ) -> Result<CodexCommandExecResult, CodexRuntimeError>
+    where
+        F: FnMut(CodexCommandExecOutputDelta) -> Result<(), E>,
+        E: Display,
+    {
+        let mut notification_handler = |method: &str, message: &Value| {
+            let Some(delta) = parse_command_exec_output_delta(method, message)? else {
+                return Ok(());
+            };
+
+            on_output(delta).map_err(|error| CodexRuntimeError::StreamCallbackFailed {
+                message: error.to_string(),
+            })
+        };
+
+        self.request_parse_with_timing(
+            2,
+            "command/exec",
+            params,
+            None,
+            Some(&mut notification_handler),
+            RequestTiming::COMMAND_EXEC_STREAMING,
+        )
     }
 
     fn start_turn(&mut self, thread_id: &str, input_text: &str) -> Result<(), CodexRuntimeError> {
@@ -1065,7 +1215,32 @@ impl CodexAppServerProcess {
         P: Serialize,
         R: for<'de> Deserialize<'de>,
     {
-        let value = self.request_value(id, method, params, None, None)?;
+        let value =
+            self.request_value_with_timing(id, method, params, None, None, RequestTiming::DEFAULT)?;
+        serde_json::from_value(value).map_err(CodexRuntimeError::Json)
+    }
+
+    fn request_parse_with_timing<P, R>(
+        &mut self,
+        id: u64,
+        method: &str,
+        params: &P,
+        approval_handler: Option<&mut ApprovalHandler<'_>>,
+        notification_handler: Option<&mut NotificationHandler<'_>>,
+        timing: RequestTiming,
+    ) -> Result<R, CodexRuntimeError>
+    where
+        P: Serialize,
+        R: for<'de> Deserialize<'de>,
+    {
+        let value = self.request_value_with_timing(
+            id,
+            method,
+            params,
+            approval_handler,
+            notification_handler,
+            timing,
+        )?;
         serde_json::from_value(value).map_err(CodexRuntimeError::Json)
     }
 
@@ -1074,8 +1249,30 @@ impl CodexAppServerProcess {
         id: u64,
         method: &str,
         params: &P,
+        approval_handler: Option<&mut ApprovalHandler<'_>>,
+        notification_handler: Option<&mut NotificationHandler<'_>>,
+    ) -> Result<Value, CodexRuntimeError>
+    where
+        P: Serialize,
+    {
+        self.request_value_with_timing(
+            id,
+            method,
+            params,
+            approval_handler,
+            notification_handler,
+            RequestTiming::DEFAULT,
+        )
+    }
+
+    fn request_value_with_timing<P>(
+        &mut self,
+        id: u64,
+        method: &str,
+        params: &P,
         mut approval_handler: Option<&mut ApprovalHandler<'_>>,
         mut notification_handler: Option<&mut NotificationHandler<'_>>,
+        timing: RequestTiming,
     ) -> Result<Value, CodexRuntimeError>
     where
         P: Serialize,
@@ -1088,14 +1285,14 @@ impl CodexAppServerProcess {
             .map_err(CodexRuntimeError::StdinWrite)?;
         self.stdin.flush().map_err(CodexRuntimeError::StdinWrite)?;
 
-        let mut deadline = Instant::now() + RESPONSE_TIMEOUT;
+        let mut deadline = Instant::now() + timing.response_timeout;
 
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
                 return Err(CodexRuntimeError::ResponseTimeout {
                     method: method.to_string(),
-                    waited_ms: RESPONSE_TIMEOUT.as_millis(),
+                    waited_ms: timing.response_timeout.as_millis(),
                     stderr: self.stderr_snapshot(),
                 });
             }
@@ -1103,7 +1300,7 @@ impl CodexAppServerProcess {
             let line = self.stdout_rx.recv_timeout(remaining).map_err(|_| {
                 CodexRuntimeError::ResponseTimeout {
                     method: method.to_string(),
-                    waited_ms: RESPONSE_TIMEOUT.as_millis(),
+                    waited_ms: timing.response_timeout.as_millis(),
                     stderr: self.stderr_snapshot(),
                 }
             })?;
@@ -1128,12 +1325,15 @@ impl CodexAppServerProcess {
                     let decision = approval_handler(server_request.request())?;
                     let response_value = server_request.response_value(decision);
                     self.respond_to_server_request(response_id, response_value)?;
-                    deadline = Instant::now() + TURN_COMPLETION_TIMEOUT;
+                    deadline = Instant::now() + timing.extend_timeout_after_server_request;
                     continue;
                 }
 
                 if let Some(notification_handler) = notification_handler.as_deref_mut() {
                     notification_handler(server_method, &message)?;
+                    if let Some(extension) = timing.extend_timeout_after_notification {
+                        deadline = Instant::now() + extension;
+                    }
                 }
                 continue;
             }
@@ -1612,6 +1812,80 @@ fn params_string(params: &Value, key: &str, method: &str) -> Result<String, Code
         })
 }
 
+fn validate_command_exec_params(
+    params: &CodexCommandExecParams,
+    streaming: bool,
+) -> Result<(), CodexRuntimeError> {
+    if params.command.is_empty() {
+        return Err(CodexRuntimeError::InvalidCommandExecParams {
+            message: "command argv vector must not be empty".to_string(),
+        });
+    }
+
+    if params
+        .process_id
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err(CodexRuntimeError::InvalidCommandExecParams {
+            message: "processId must not be empty".to_string(),
+        });
+    }
+
+    if streaming && !params.stream_stdout_stderr {
+        return Err(CodexRuntimeError::InvalidCommandExecParams {
+            message: "streaming command/exec requires streamStdoutStderr=true".to_string(),
+        });
+    }
+
+    if params.stream_stdout_stderr && params.process_id.is_none() {
+        return Err(CodexRuntimeError::InvalidCommandExecParams {
+            message: "streamStdoutStderr requires a client-supplied processId".to_string(),
+        });
+    }
+
+    Ok(())
+}
+
+fn parse_command_exec_output_delta(
+    method: &str,
+    message: &Value,
+) -> Result<Option<CodexCommandExecOutputDelta>, CodexRuntimeError> {
+    if method != "command/exec/outputDelta" {
+        return Ok(None);
+    }
+
+    let params = message
+        .get("params")
+        .ok_or_else(|| CodexRuntimeError::InvalidResponse {
+            method: method.to_string(),
+            message: message.to_string(),
+        })?;
+    let stream = match params_string(params, "stream", method)?.as_str() {
+        "stdout" => CodexCommandExecOutputStream::Stdout,
+        "stderr" => CodexCommandExecOutputStream::Stderr,
+        other => {
+            return Err(CodexRuntimeError::InvalidResponse {
+                method: method.to_string(),
+                message: format!("unsupported command/exec stream: {other}"),
+            });
+        }
+    };
+
+    Ok(Some(CodexCommandExecOutputDelta {
+        process_id: params_string(params, "processId", method)?,
+        stream,
+        delta_base64: params_string(params, "deltaBase64", method)?,
+        cap_reached: params
+            .get("capReached")
+            .and_then(|value| value.as_bool())
+            .ok_or_else(|| CodexRuntimeError::InvalidResponse {
+                method: method.to_string(),
+                message: format!("missing params field capReached: {params}"),
+            })?,
+    }))
+}
+
 fn merge_transcript_entry(target: &mut CodexTranscriptEntry, incoming: &CodexTranscriptEntry) {
     target.kind = incoming.kind.clone();
     target.title = incoming.title.clone();
@@ -2018,6 +2292,79 @@ mod tests {
     }
 
     #[test]
+    fn buffered_command_exec_returns_stdout_and_stderr() {
+        let repo = tempdir().expect("temp repo should exist");
+        let binary = write_command_exec_stub_binary(repo.path());
+        let params = CodexCommandExecParams {
+            command: vec!["printf-buffered".to_string()],
+            cwd: None,
+            process_id: None,
+            stream_stdout_stderr: false,
+        };
+
+        let result = exec_codex_command_with_binary(repo.path(), &binary, &params)
+            .expect("buffered command/exec should succeed");
+
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout, "BUFFERED-STDOUT\n");
+        assert_eq!(result.stderr, "BUFFERED-STDERR\n");
+    }
+
+    #[test]
+    fn streaming_command_exec_emits_output_deltas_and_empty_final_buffers() {
+        let repo = tempdir().expect("temp repo should exist");
+        let binary = write_command_exec_stub_binary(repo.path());
+        let params = CodexCommandExecParams {
+            command: vec!["printf-streamed".to_string()],
+            cwd: None,
+            process_id: Some("stream-proc-001".to_string()),
+            stream_stdout_stderr: true,
+        };
+        let mut deltas = Vec::new();
+
+        let result = stream_codex_command_with_binary(repo.path(), &binary, &params, |delta| {
+            deltas.push(delta);
+            Ok::<(), std::convert::Infallible>(())
+        })
+        .expect("streaming command/exec should succeed");
+
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout, "");
+        assert_eq!(result.stderr, "");
+        assert_eq!(deltas.len(), 2);
+        assert!(
+            deltas
+                .iter()
+                .all(|delta| delta.process_id == "stream-proc-001")
+        );
+        assert_eq!(deltas[0].stream, CodexCommandExecOutputStream::Stdout);
+        assert_eq!(deltas[0].delta_base64, "U1RSRUFNLU9VVC0xCg==");
+        assert!(!deltas[0].cap_reached);
+        assert_eq!(deltas[1].stream, CodexCommandExecOutputStream::Stderr);
+        assert_eq!(deltas[1].delta_base64, "U1RSRUFNLUVSUi0xCg==");
+        assert!(!deltas[1].cap_reached);
+    }
+
+    #[test]
+    fn streaming_command_exec_requires_client_process_id() {
+        let params = CodexCommandExecParams {
+            command: vec!["printf-streamed".to_string()],
+            cwd: None,
+            process_id: None,
+            stream_stdout_stderr: true,
+        };
+        let error = stream_codex_command_with_binary(
+            Path::new("/tmp"),
+            Path::new("/definitely-unused"),
+            &params,
+            |_| Ok::<(), std::convert::Infallible>(()),
+        )
+        .expect_err("streaming command/exec without processId should fail before launch");
+
+        assert!(error.to_string().contains("processId"));
+    }
+
+    #[test]
     fn parses_command_execution_approval_request() {
         let message = json!({
             "method": "item/commandExecution/requestApproval",
@@ -2103,6 +2450,75 @@ mod tests {
 
     fn write_stub_codex_binary_with_command_notifications(repo_root: &Path) -> PathBuf {
         write_stub_codex_binary_mode(repo_root, false, true)
+    }
+
+    fn write_command_exec_stub_binary(repo_root: &Path) -> PathBuf {
+        let path = repo_root.join("codex-command-exec-stub.py");
+        let script = r#"#!/usr/bin/env python3
+import json
+import sys
+
+args = sys.argv[1:]
+if args == ['--version']:
+    print('codex-cli 0.123.0-stub')
+    raise SystemExit(0)
+
+if args[:3] == ['app-server', '--listen', 'stdio://']:
+    for raw in sys.stdin:
+        raw = raw.strip()
+        if not raw:
+            continue
+        msg = json.loads(raw)
+        method = msg.get('method')
+        if method == 'initialize':
+            print(json.dumps({'id': msg['id'], 'result': {
+                'userAgent': 'stub-client/0.123.0',
+                'codexHome': '/tmp/codex-home',
+                'platformFamily': 'unix',
+                'platformOs': 'macos'
+            }}), flush=True)
+            continue
+        if method == 'command/exec':
+            params = msg.get('params', {})
+            if params.get('streamStdoutStderr'):
+                process_id = params.get('processId', 'missing-process-id')
+                print(json.dumps({'method': 'command/exec/outputDelta', 'params': {
+                    'processId': process_id,
+                    'stream': 'stdout',
+                    'deltaBase64': 'U1RSRUFNLU9VVC0xCg==',
+                    'capReached': False
+                }}), flush=True)
+                print(json.dumps({'method': 'command/exec/outputDelta', 'params': {
+                    'processId': process_id,
+                    'stream': 'stderr',
+                    'deltaBase64': 'U1RSRUFNLUVSUi0xCg==',
+                    'capReached': False
+                }}), flush=True)
+                print(json.dumps({'id': msg['id'], 'result': {
+                    'exitCode': 0,
+                    'stdout': '',
+                    'stderr': ''
+                }}), flush=True)
+                continue
+            print(json.dumps({'id': msg['id'], 'result': {
+                'exitCode': 0,
+                'stdout': 'BUFFERED-STDOUT\n',
+                'stderr': 'BUFFERED-STDERR\n'
+            }}), flush=True)
+            continue
+        print(json.dumps({'id': msg.get('id', 0), 'error': {'code': -32601, 'message': 'unsupported'}}), flush=True)
+    raise SystemExit(0)
+
+print('unsupported args', args, file=sys.stderr)
+raise SystemExit(1)
+"#;
+        fs::write(&path, script).expect("stub script should write");
+        let mut permissions = fs::metadata(&path)
+            .expect("metadata should exist")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&path, permissions).expect("permissions should update");
+        path
     }
 
     fn write_stub_codex_binary_mode(

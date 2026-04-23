@@ -12,6 +12,7 @@
 | `S02-event-spine` | Canonical event log, IPC, projections | S00 | done |
 | `S03-codex-runtime` | Live Codex bootstrap lane через app-server | S02 | done |
 | `S04-transcript-approval-pty` | Live turn transcript, native approvals и дальше PTY | S03 | in progress |
+| `S04a-command-exec-proof` | Standalone connection-scoped `command/exec` proof lane | S03 | done |
 | `S05-claude-runtime` | Claude runtime через bridge | S02 | planned |
 | `S06-git-review-artifacts` | Diff, artifacts, worktrees | S02 | planned |
 | `S07-browser-preview` | Встроенный native preview browser | S01,S02 | planned |

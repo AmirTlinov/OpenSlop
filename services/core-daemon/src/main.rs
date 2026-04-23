@@ -1,6 +1,8 @@
 use provider_domain::{
-    CodexApprovalDecision, CodexApprovalRequest, CodexRuntimeRegistry, CodexThreadBootstrap,
-    read_codex_transcript, submit_codex_turn,
+    CodexApprovalDecision, CodexApprovalRequest, CodexCommandExecOutputDelta,
+    CodexCommandExecOutputStream, CodexCommandExecParams, CodexCommandExecResult,
+    CodexRuntimeRegistry, CodexThreadBootstrap, exec_codex_command, read_codex_transcript,
+    stream_codex_command, submit_codex_turn,
 };
 use serde::{Deserialize, Serialize};
 use session_domain::{
@@ -26,6 +28,10 @@ struct StdioRequest {
     input_text: Option<String>,
     approval_id: Option<String>,
     approval_decision: Option<String>,
+    command: Option<Vec<String>>,
+    cwd: Option<String>,
+    process_id: Option<String>,
+    stream_stdout_stderr: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -48,6 +54,25 @@ struct CodexApprovalRequestEventResponse {
     kind: &'static str,
     session_id: String,
     approval: CodexApprovalRequest,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CodexCommandExecResultResponse {
+    kind: &'static str,
+    exit_code: i32,
+    stdout: String,
+    stderr: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CodexCommandExecOutputEventResponse {
+    kind: &'static str,
+    process_id: String,
+    stream: CodexCommandExecOutputStream,
+    delta_base64: String,
+    cap_reached: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -266,6 +291,29 @@ fn codex_submit_turn_stream_json(
     serialize_payload(&transcript, pretty)
 }
 
+fn codex_command_exec_json(
+    repo_root: &Path,
+    params: &CodexCommandExecParams,
+    pretty: bool,
+) -> Result<String, String> {
+    let result = exec_codex_command(repo_root, params).map_err(|error| error.to_string())?;
+    serialize_payload(&map_command_exec_result(result), pretty)
+}
+
+fn codex_command_exec_stream_json(
+    repo_root: &Path,
+    params: &CodexCommandExecParams,
+    pretty: bool,
+    writer: &mut impl Write,
+) -> Result<String, String> {
+    let bridge = RefCell::new(CodexCommandExecStreamBridge { writer });
+    let result = stream_codex_command(repo_root, params, |delta| {
+        bridge.borrow_mut().emit_output(delta)
+    })
+    .map_err(|error| error.to_string())?;
+    serialize_payload(&map_command_exec_result(result), pretty)
+}
+
 struct CodexTurnStreamBridge<'a, R: BufRead, W: Write> {
     reader: &'a mut R,
     writer: &'a mut W,
@@ -292,6 +340,25 @@ impl<R: BufRead, W: Write> CodexTurnStreamBridge<'_, R, W> {
         approval: &CodexApprovalRequest,
     ) -> Result<CodexApprovalDecision, String> {
         wait_for_approval_decision(self.reader, self.writer, &self.session_id, approval)
+    }
+}
+
+struct CodexCommandExecStreamBridge<'a, W: Write> {
+    writer: &'a mut W,
+}
+
+impl<W: Write> CodexCommandExecStreamBridge<'_, W> {
+    fn emit_output(&mut self, delta: CodexCommandExecOutputDelta) -> Result<(), String> {
+        let payload = serde_json::to_string(&CodexCommandExecOutputEventResponse {
+            kind: "codex_command_exec_output_event",
+            process_id: delta.process_id,
+            stream: delta.stream,
+            delta_base64: delta.delta_base64,
+            cap_reached: delta.cap_reached,
+        })
+        .map_err(|error| error.to_string())?;
+        writeln!(self.writer, "{payload}").map_err(|error| error.to_string())?;
+        self.writer.flush().map_err(|error| error.to_string())
     }
 }
 
@@ -384,6 +451,29 @@ fn serialize_payload<T: Serialize>(payload: &T, pretty: bool) -> Result<String, 
     } else {
         serde_json::to_string(payload).map_err(|error| error.to_string())
     }
+}
+
+fn map_command_exec_result(result: CodexCommandExecResult) -> CodexCommandExecResultResponse {
+    CodexCommandExecResultResponse {
+        kind: "codex_command_exec_result",
+        exit_code: result.exit_code,
+        stdout: result.stdout,
+        stderr: result.stderr,
+    }
+}
+
+fn build_command_exec_params(request: &StdioRequest) -> Result<CodexCommandExecParams, String> {
+    let command = request
+        .command
+        .clone()
+        .ok_or_else(|| "missing command".to_string())?;
+
+    Ok(CodexCommandExecParams {
+        command,
+        cwd: request.cwd.clone(),
+        process_id: request.process_id.clone(),
+        stream_stdout_stderr: request.stream_stdout_stderr.unwrap_or(false),
+    })
 }
 
 fn map_bootstrap_to_session(repo_root: &Path, bootstrap: &CodexThreadBootstrap) -> SessionSummary {
@@ -497,9 +587,13 @@ fn handle_stdio_request(line: &str, repo_root: &Path) -> String {
 }
 
 fn handle_parsed_stdio_request(request: StdioRequest, repo_root: &Path) -> String {
-    let operation = request.operation.or(request.query).unwrap_or_default();
+    let operation = request
+        .operation
+        .as_deref()
+        .or(request.query.as_deref())
+        .unwrap_or_default();
 
-    match operation.as_str() {
+    match operation {
         "session-list" => match session_list_json(repo_root, false) {
             Ok(payload) => payload,
             Err(message) => serialize_error(message),
@@ -526,6 +620,13 @@ fn handle_parsed_stdio_request(request: StdioRequest, repo_root: &Path) -> Strin
             (None, _) => serialize_error("missing sessionId".to_string()),
             (_, None) => serialize_error("missing inputText".to_string()),
         },
+        "codex-command-exec" => match build_command_exec_params(&request) {
+            Ok(params) => match codex_command_exec_json(repo_root, &params, false) {
+                Ok(payload) => payload,
+                Err(message) => serialize_error(message),
+            },
+            Err(message) => serialize_error(message),
+        },
         other => serialize_error(format!("unsupported operation: {other}")),
     }
 }
@@ -542,21 +643,29 @@ fn handle_streaming_stdio_request(
         .or(request.query.clone())
         .unwrap_or_default();
 
-    if operation != "codex-submit-turn-stream" {
-        return Ok(false);
-    }
-
-    let response = match (request.session_id.as_deref(), request.input_text.as_deref()) {
-        (Some(session_id), Some(input_text)) => {
-            match codex_submit_turn_stream_json(
-                repo_root, session_id, input_text, false, reader, writer,
-            ) {
-                Ok(payload) => payload,
-                Err(message) => serialize_error(message),
+    let response = match operation.as_str() {
+        "codex-submit-turn-stream" => {
+            match (request.session_id.as_deref(), request.input_text.as_deref()) {
+                (Some(session_id), Some(input_text)) => {
+                    match codex_submit_turn_stream_json(
+                        repo_root, session_id, input_text, false, reader, writer,
+                    ) {
+                        Ok(payload) => payload,
+                        Err(message) => serialize_error(message),
+                    }
+                }
+                (None, _) => serialize_error("missing sessionId".to_string()),
+                (_, None) => serialize_error("missing inputText".to_string()),
             }
         }
-        (None, _) => serialize_error("missing sessionId".to_string()),
-        (_, None) => serialize_error("missing inputText".to_string()),
+        "codex-command-exec-stream" => match build_command_exec_params(request) {
+            Ok(params) => match codex_command_exec_stream_json(repo_root, &params, false, writer) {
+                Ok(payload) => payload,
+                Err(message) => serialize_error(message),
+            },
+            Err(message) => serialize_error(message),
+        },
+        _ => return Ok(false),
     };
 
     writeln!(writer, "{response}")?;
@@ -687,5 +796,41 @@ mod tests {
         let session = map_transcript_to_session(temp.path(), &transcript.thread_id, &transcript);
         assert_eq!(session.title, "Reply with exactly OK.");
         assert_eq!(session.status, "idle");
+    }
+
+    #[test]
+    fn rejects_command_exec_without_command() {
+        let temp = tempdir().expect("temp dir should exist");
+        let response = handle_stdio_request(r#"{"operation":"codex-command-exec"}"#, temp.path());
+        assert!(response.contains("\"kind\":\"error\""));
+        assert!(response.contains("missing command"));
+    }
+
+    #[test]
+    fn rejects_streaming_command_exec_without_process_id() {
+        let temp = tempdir().expect("temp dir should exist");
+        let request = StdioRequest {
+            operation: Some("codex-command-exec-stream".to_string()),
+            query: None,
+            session_id: None,
+            input_text: None,
+            approval_id: None,
+            approval_decision: None,
+            command: Some(vec!["printf-streamed".to_string()]),
+            cwd: None,
+            process_id: None,
+            stream_stdout_stderr: Some(true),
+        };
+        let mut reader = io::Cursor::new(Vec::<u8>::new());
+        let mut writer = Vec::<u8>::new();
+
+        let handled =
+            handle_streaming_stdio_request(&request, temp.path(), &mut reader, &mut writer)
+                .expect("stream request should return error payload");
+
+        assert!(handled);
+        let text = String::from_utf8(writer).expect("writer should be utf8");
+        assert!(text.contains("\"kind\":\"error\""));
+        assert!(text.contains("processId"));
     }
 }

@@ -40,6 +40,11 @@ provider
   - provider вешает raw `stdin/control` payload на уже существующий `command` item как `terminalStdin`;
   - Swift transcript model и command card видят этот сигнал в streaming contour;
   - обычный `thread/read` не обязан вернуть этот сигнал обратно, поэтому текущий contour остаётся strictly live-only.
+- В S04a появился отдельный standalone `command/exec` proof lane:
+  - pinned subset включает `v2/CommandExecParams.json`, `v2/CommandExecResponse.json` и `v2/CommandExecOutputDeltaNotification.json`;
+  - provider поднимает свежий `codex app-server` только на время одного standalone exec;
+  - buffered exec и streaming exec живут вне session registry и вне transcript truth;
+  - output deltas идут наружу как raw base64 chunks c client-supplied `processId`.
 - Raw upstream truth для `item/commandExecution/terminalInteraction` теперь отделён отдельным witness-скриптом:
   - `domains/provider/contracts/codex-app-server/v0.123.0/witnesses/terminal_interaction_witness.py`;
   - он идёт напрямую в `codex app-server` по stdio и не проходит через provider/core-daemon/gui;
