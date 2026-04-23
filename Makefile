@@ -24,4 +24,4 @@ macos-build:
 probe-session-list: daemon-build
 	$(SWIFT) run --package-path apps/macos-app OpenSlopProbe
 
-smoke: doctor daemon-heartbeat macos-build probe-session-list
+smoke: doctor daemon-heartbeat daemon-query-session-list macos-build probe-session-list

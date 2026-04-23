@@ -27,3 +27,12 @@ public struct DaemonSessionSummary: Codable, Equatable, Hashable, Identifiable, 
         self.status = status
     }
 }
+
+struct CoreDaemonRequest: Codable, Sendable {
+    let query: String
+}
+
+struct CoreDaemonErrorResponse: Codable, Sendable {
+    let kind: String
+    let message: String
+}

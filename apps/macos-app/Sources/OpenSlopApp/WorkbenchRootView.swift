@@ -4,7 +4,7 @@ import WorkbenchCore
 private enum SessionProjectionLoadState {
     case idle
     case loading
-    case loaded(kind: String)
+    case loaded(kind: String, transport: String)
     case failed(message: String)
 
     var summary: String {
@@ -12,9 +12,9 @@ private enum SessionProjectionLoadState {
         case .idle:
             return "Projection ещё не загружена."
         case .loading:
-            return "Загружаем session list из core-daemon."
-        case .loaded(let kind):
-            return "Daemon вернул projection kind=\(kind)."
+            return "Загружаем session list через long-lived stdio transport."
+        case .loaded(let kind, let transport):
+            return "Daemon вернул projection kind=\(kind) через \(transport)."
         case .failed(let message):
             return message
         }
@@ -23,10 +23,11 @@ private enum SessionProjectionLoadState {
 
 struct WorkbenchRootView: View {
     private let seed = WorkbenchSeed.bootstrap
+    private let client = CoreDaemonClient()
 
     @State private var sessions: [DaemonSessionSummary] = []
     @State private var selectedSessionID: DaemonSessionSummary.ID?
-    @State private var promptText = "Поднять первый реальный event spine path"
+    @State private var promptText = "Поднять long-lived stdio IPC path"
     @State private var selectedProvider = "Codex"
     @State private var selectedEffort = "High"
     @State private var loadState: SessionProjectionLoadState = .idle
@@ -36,7 +37,7 @@ struct WorkbenchRootView: View {
     }
 
     private var projectionKind: String {
-        if case .loaded(let kind) = loadState {
+        if case .loaded(let kind, _) = loadState {
             return kind
         }
         return "session_list.pending"
@@ -111,12 +112,11 @@ struct WorkbenchRootView: View {
         loadState = .loading
 
         do {
-            let projection = try await Task.detached(priority: .userInitiated) {
-                try CoreDaemonClient().fetchSessionProjection()
-            }.value
+            let projection = try await client.fetchSessionProjection()
+            let daemonPID = try await client.daemonProcessIdentifier()
             sessions = projection.sessions
             selectedSessionID = selectedSessionID ?? projection.sessions.first?.id
-            loadState = .loaded(kind: projection.kind)
+            loadState = .loaded(kind: projection.kind, transport: "stdio pid=\(daemonPID)")
         } catch {
             sessions = []
             selectedSessionID = nil

@@ -4,20 +4,20 @@
 
 ## Scope
 
-Семантическая visual-сверка narrow S02 патча против `DESIGN.md`.
+Семантическая visual-сверка narrow S02 патча после перевода sidebar path на long-lived stdio IPC.
 
 ## Что изменилось визуально
 
-- Левая панель перестала быть hardcoded витриной и стала session sidebar.
-- Центральная область по-прежнему остаётся timeline surface.
+- Левая панель остаётся session sidebar, но summary теперь сообщает transport state и daemon PID.
+- Центральная область остаётся timeline surface.
 - Правая панель остаётся inspector surface.
 - Нижняя панель остаётся composer.
 
 ## Почему это соответствует DESIGN.md
 
 - Базовая анатомия окна не сломана: `sidebar` + `timeline` + `inspector` + `composer` сохранены.
-- Изменение усилило operability. Sidebar теперь показывает реальные daemon-backed sessions.
-- Патч не превратил окно в giant markdown wall и не смешал transcript, tool output и inspector в одну поверхность.
+- Изменение усилило operability. Sidebar и header теперь опираются на живой daemon transport, а не на одноразовый query-process.
+- Патч не распух в транспортный zoo и не изменил визуальный grammar окна.
 
 ## Что сознательно не проверялось здесь
 
@@ -28,4 +28,4 @@
 
 ## Verdict
 
-Для S02 visual change честный и достаточный: окно осталось в той же native grammar, но sidebar получил реальную truth surface.
+Для текущего S02 change visual shape остаётся честной и узкой: окно сохранило native grammar, а transport truth стала живой.

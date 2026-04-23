@@ -27,6 +27,6 @@ macos-app
 Сюда идут задачи про window shell, layout, toolbar, keyboard navigation и рендеринг native surfaces.
 
 Текущий реальный proof target для S02:
-- `WorkbenchCore/CoreDaemonClient.swift` читает session projection из `target/debug/core-daemon`.
-- `OpenSlopProbe` использует тот же путь без GUI.
-- `WorkbenchRootView` показывает реальный session list вместо hardcoded sidebar списка.
+- `WorkbenchCore/CoreDaemonClient.swift` держит long-lived stdio transport к `core-daemon --serve-stdio`.
+- `OpenSlopProbe` делает две последовательные query over one transport и проверяет reuse по PID.
+- `WorkbenchRootView` показывает real daemon-backed sessions и summary transport state вместо одноразового process query.
