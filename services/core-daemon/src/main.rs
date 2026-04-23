@@ -1032,4 +1032,63 @@ mod tests {
         assert!(response.contains("\"kind\":\"error\""));
         assert!(response.contains("only supported inside codex-command-exec-control-stream"));
     }
+
+    #[test]
+    fn rejects_standalone_command_exec_terminate_operation() {
+        let temp = tempdir().expect("temp dir should exist");
+        let response = handle_stdio_request(
+            r#"{"operation":"codex-command-exec-terminate","processId":"proc-1"}"#,
+            temp.path(),
+        );
+        assert!(response.contains("\"kind\":\"error\""));
+        assert!(response.contains("only supported inside codex-command-exec-control-stream"));
+    }
+
+    #[test]
+    fn command_exec_write_rejects_wrong_process_id_and_keeps_waiting() {
+        let mut reader = io::Cursor::new(
+            br#"{"operation":"codex-command-exec-write","processId":"wrong-proc","deltaBase64":"UElORwo="}
+{"operation":"codex-command-exec-write","processId":"proc-1","deltaBase64":"UElORwo="}
+"#
+            .to_vec(),
+        );
+        let mut writer = Vec::<u8>::new();
+
+        let control =
+            wait_for_command_exec_write(&mut reader, &mut writer, "proc-1").expect("write should recover");
+
+        let text = String::from_utf8(writer).expect("writer should be utf8");
+        assert!(text.contains("write processId does not match active command/exec"));
+        match control {
+            CodexCommandExecControlRequest::Write(params) => {
+                assert_eq!(params.process_id, "proc-1");
+                assert_eq!(params.delta_base64.as_deref(), Some("UElORwo="));
+                assert!(!params.close_stdin);
+            }
+            other => panic!("expected write control, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn command_exec_terminate_rejects_wrong_process_id_and_keeps_waiting() {
+        let mut reader = io::Cursor::new(
+            br#"{"operation":"codex-command-exec-terminate","processId":"wrong-proc"}
+{"operation":"codex-command-exec-terminate","processId":"proc-1"}
+"#
+            .to_vec(),
+        );
+        let mut writer = Vec::<u8>::new();
+
+        let control =
+            wait_for_command_exec_terminate(&mut reader, &mut writer, "proc-1").expect("terminate should recover");
+
+        let text = String::from_utf8(writer).expect("writer should be utf8");
+        assert!(text.contains("terminate processId does not match active command/exec"));
+        match control {
+            CodexCommandExecControlRequest::Terminate(params) => {
+                assert_eq!(params.process_id, "proc-1");
+            }
+            other => panic!("expected terminate control, got {other:?}"),
+        }
+    }
 }

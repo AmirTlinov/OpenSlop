@@ -20,6 +20,14 @@ public struct DaemonCodexCommandExecOutputEvent: Codable, Equatable, Sendable {
     public let capReached: Bool
 }
 
+public struct DaemonCodexCommandExecControlError: Equatable, Sendable {
+    public let message: String
+
+    public init(message: String) {
+        self.message = message
+    }
+}
+
 public struct DaemonCodexCommandExecWriteRequest: Equatable, Sendable {
     public let processId: String
     public let deltaBase64: String?
@@ -43,4 +51,9 @@ public struct DaemonCodexCommandExecTerminateRequest: Equatable, Sendable {
 public enum DaemonCodexCommandExecControlRequest: Equatable, Sendable {
     case write(DaemonCodexCommandExecWriteRequest)
     case terminate(DaemonCodexCommandExecTerminateRequest)
+}
+
+public enum DaemonCodexCommandExecControlWitnessEvent: Equatable, Sendable {
+    case output(DaemonCodexCommandExecOutputEvent)
+    case error(DaemonCodexCommandExecControlError)
 }

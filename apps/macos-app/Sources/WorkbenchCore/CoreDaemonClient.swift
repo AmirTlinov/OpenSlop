@@ -100,6 +100,20 @@ public struct CoreDaemonClient: Sendable {
         )
     }
 
+    public func streamCodexCommandWithControlWitness(
+        command: [String],
+        cwd: String? = nil,
+        processId: String,
+        onEvent: @escaping @Sendable (DaemonCodexCommandExecControlWitnessEvent) async -> DaemonCodexCommandExecControlRequest?
+    ) async throws -> DaemonCodexCommandExecResult {
+        try await SharedCoreDaemonTransport.instance.streamCodexCommandWithControlWitness(
+            command: command,
+            cwd: cwd,
+            processId: processId,
+            onEvent: onEvent
+        )
+    }
+
     public func daemonProcessIdentifier() async throws -> Int32 {
         try await SharedCoreDaemonTransport.instance.daemonProcessIdentifier()
     }
@@ -275,24 +289,7 @@ private actor CoreDaemonTransport {
                outputEvent.kind == "codex_command_exec_output_event"
             {
                 if let control = await onOutput(outputEvent) {
-                    switch control {
-                    case .write(let write):
-                        try sendRaw(
-                            request: CoreDaemonRequest(
-                                operation: "codex-command-exec-write",
-                                processId: write.processId,
-                                deltaBase64: write.deltaBase64,
-                                closeStdin: write.closeStdin
-                            )
-                        )
-                    case .terminate(let terminate):
-                        try sendRaw(
-                            request: CoreDaemonRequest(
-                                operation: "codex-command-exec-terminate",
-                                processId: terminate.processId
-                            )
-                        )
-                    }
+                    try sendControlRequest(control)
                 }
                 continue
             }
@@ -303,6 +300,49 @@ private actor CoreDaemonTransport {
 
             if let errorResponse = try? JSONDecoder().decode(CoreDaemonErrorResponse.self, from: response) {
                 throw CoreDaemonClientError.invalidResponse(errorResponse.message)
+            }
+
+            throw CoreDaemonClientError.decodeFailed(String(decoding: response, as: UTF8.self))
+        }
+    }
+
+    func streamCodexCommandWithControlWitness(
+        command: [String],
+        cwd: String?,
+        processId: String,
+        onEvent: @escaping @Sendable (DaemonCodexCommandExecControlWitnessEvent) async -> DaemonCodexCommandExecControlRequest?
+    ) async throws -> DaemonCodexCommandExecResult {
+        try ensureRunning()
+        try sendRaw(
+            request: CoreDaemonRequest(
+                operation: "codex-command-exec-control-stream",
+                command: command,
+                cwd: cwd,
+                processId: processId
+            )
+        )
+
+        while true {
+            let response = try readResponseLine()
+
+            if let outputEvent = try? JSONDecoder().decode(DaemonCodexCommandExecOutputEvent.self, from: response),
+               outputEvent.kind == "codex_command_exec_output_event"
+            {
+                if let control = await onEvent(.output(outputEvent)) {
+                    try sendControlRequest(control)
+                }
+                continue
+            }
+
+            if let decoded = try? JSONDecoder().decode(DaemonCodexCommandExecResult.self, from: response) {
+                return decoded
+            }
+
+            if let errorResponse = try? JSONDecoder().decode(CoreDaemonErrorResponse.self, from: response) {
+                if let control = await onEvent(.error(.init(message: errorResponse.message))) {
+                    try sendControlRequest(control)
+                }
+                continue
             }
 
             throw CoreDaemonClientError.decodeFailed(String(decoding: response, as: UTF8.self))
@@ -370,6 +410,27 @@ private actor CoreDaemonTransport {
         }
 
         throw CoreDaemonClientError.decodeFailed(String(decoding: response, as: UTF8.self))
+    }
+
+    private func sendControlRequest(_ control: DaemonCodexCommandExecControlRequest) throws {
+        switch control {
+        case .write(let write):
+            try sendRaw(
+                request: CoreDaemonRequest(
+                    operation: "codex-command-exec-write",
+                    processId: write.processId,
+                    deltaBase64: write.deltaBase64,
+                    closeStdin: write.closeStdin
+                )
+            )
+        case .terminate(let terminate):
+            try sendRaw(
+                request: CoreDaemonRequest(
+                    operation: "codex-command-exec-terminate",
+                    processId: terminate.processId
+                )
+            )
+        }
     }
 
     private func sendRaw(request: CoreDaemonRequest) throws {

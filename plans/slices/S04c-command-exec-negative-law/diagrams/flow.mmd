@@ -1,0 +1,10 @@
+flowchart TD
+    A[Probe opens codex-command-exec-control-stream] --> B[Daemon streams READY output]
+    B --> C[Probe sends wrong processId write]
+    C --> D[Daemon returns write mismatch error]
+    D --> E[Probe sends correct write on same connection]
+    E --> F[Daemon forwards live write and streams echoed PING]
+    F --> G[Probe sends wrong processId terminate]
+    G --> H[Daemon returns terminate mismatch error]
+    H --> I[Probe sends correct terminate on same connection]
+    I --> J[Daemon ends process and returns final result]
