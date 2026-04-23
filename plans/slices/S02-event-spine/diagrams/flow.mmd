@@ -1,0 +1,6 @@
+flowchart LR
+    User["User intent"] --> Slice["S02-event-spine"]
+    Slice --> N1["services/core-daemon"]
+    Slice --> N2["domains/session"]
+    Slice --> N3["domains/artifact"]
+    Slice --> N4["domains/search"]

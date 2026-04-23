@@ -1,0 +1,6 @@
+flowchart LR
+    Prompt[Prompt + policy] --> Turn[Turn start]
+    Turn --> Stream[Streaming events]
+    Stream --> Review[Diff / verify / browser]
+    Review --> Approval[Approval or continue]
+    Approval --> Closure[Commit / artifact / next turn]

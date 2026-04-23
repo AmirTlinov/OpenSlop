@@ -1,0 +1,15 @@
+.DS_Store
+DerivedData/
+.build/
+.swiftpm/
+Packages/
+.cache/
+coverage/
+dist/
+node_modules/
+playwright-report/
+*.log
+.env
+.env.*
+!.env.example
+target/

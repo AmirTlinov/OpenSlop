@@ -1,0 +1,23 @@
+flowchart TB
+    subgraph GUI[GUI process]
+        App[OpenSlop.app]
+    end
+
+    subgraph Runtime[Local runtime]
+        Daemon[core-daemon]
+        Codex[Codex adapter]
+        Claude[Claude bridge]
+        Browser[Browser runner]
+    end
+
+    subgraph Data[Local data]
+        Projections[(SQLite WAL)]
+        Blobs[(Artifact blob store)]
+    end
+
+    App <-- IPC --> Daemon
+    Daemon --> Codex
+    Daemon --> Claude
+    Daemon --> Browser
+    Daemon --> Projections
+    Daemon --> Blobs

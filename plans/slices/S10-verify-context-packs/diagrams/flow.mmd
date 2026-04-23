@@ -1,0 +1,6 @@
+flowchart LR
+    User["User intent"] --> Slice["S10-verify-context-packs"]
+    Slice --> N1["domains/verify"]
+    Slice --> N2["domains/harness"]
+    Slice --> N3["domains/session"]
+    Slice --> N4["apps/macos-app"]

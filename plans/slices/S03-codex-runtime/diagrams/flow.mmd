@@ -1,0 +1,6 @@
+flowchart LR
+    User["User intent"] --> Slice["S03-codex-runtime"]
+    Slice --> N1["domains/provider"]
+    Slice --> N2["domains/session"]
+    Slice --> N3["domains/approval"]
+    Slice --> N4["services/core-daemon"]

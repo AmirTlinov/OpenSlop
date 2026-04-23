@@ -1,0 +1,25 @@
+flowchart LR
+    Workspace[workspace]
+    Session[session]
+    Provider[provider]
+    Approval[approval]
+    Git[git]
+    Artifact[artifact]
+    Browser[browser]
+    Harness[harness]
+    Verify[verify]
+    Search[search]
+
+    Workspace --> Session
+    Workspace --> Git
+    Workspace --> Browser
+    Session --> Provider
+    Session --> Artifact
+    Session --> Approval
+    Git --> Artifact
+    Browser --> Artifact
+    Harness --> Verify
+    Harness --> Artifact
+    Verify --> Session
+    Search --> Session
+    Search --> Artifact

@@ -1,0 +1,20 @@
+flowchart LR
+    User[User]
+    App[OpenSlop.app
+SwiftUI + AppKit shell]
+    Daemon[core-daemon
+event spine + orchestration]
+    Codex[Codex app-server]
+    Claude[claude-bridge]
+    Browser[browser-runner]
+    Repo[Workspace repository]
+    Store[(SQLite projections
++ blob store)]
+
+    User --> App
+    App <--> Daemon
+    Daemon <--> Codex
+    Daemon <--> Claude
+    Daemon <--> Browser
+    Daemon <--> Repo
+    Daemon <--> Store
