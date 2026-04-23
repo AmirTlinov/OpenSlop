@@ -4,6 +4,15 @@ import WorkbenchCore
 struct InspectorPanelView: View {
     let cards: [InspectorCardSeed]
     let terminalSurface: DaemonCodexTerminalSurface?
+    let commandExecArgvText: String
+    @Binding var commandExecStdinText: String
+    let commandExecSurface: DaemonCodexCommandExecControlSurface?
+    let onRunCommandExec: () -> Void
+    let onSendCommandExecWrite: () -> Void
+    let onTerminateCommandExec: () -> Void
+    let isRunCommandExecDisabled: Bool
+    let isCommandExecWriteDisabled: Bool
+    let isCommandExecTerminateDisabled: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -31,6 +40,18 @@ struct InspectorPanelView: View {
                     if let terminalSurface {
                         TerminalPaneView(surface: terminalSurface)
                     }
+
+                    CommandExecControlPaneView(
+                        argvText: commandExecArgvText,
+                        stdinText: $commandExecStdinText,
+                        surface: commandExecSurface,
+                        onRun: onRunCommandExec,
+                        onSendWrite: onSendCommandExecWrite,
+                        onTerminate: onTerminateCommandExec,
+                        isRunDisabled: isRunCommandExecDisabled,
+                        isWriteDisabled: isCommandExecWriteDisabled,
+                        isTerminateDisabled: isCommandExecTerminateDisabled
+                    )
                 }
                 .padding(16)
             }

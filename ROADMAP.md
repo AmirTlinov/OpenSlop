@@ -16,6 +16,7 @@
 | `S04b-command-exec-control-write` | Same-connection `command/exec` write + terminate proof lane | S04a | done |
 | `S04c-command-exec-negative-law` | Wrong `processId` rejection without false control takeover | S04b | done |
 | `S04d-readonly-terminal-pane` | First read-only/live-only terminal pane in native inspector | S04-transcript-approval-pty | done |
+| `S04e-command-exec-control-pane` | Guided standalone `command/exec` proof pane in inspector | S04c | done |
 | `S05-claude-runtime` | Claude runtime через bridge | S02 | planned |
 | `S06-git-review-artifacts` | Diff, artifacts, worktrees | S02 | planned |
 | `S07-browser-preview` | Встроенный native preview browser | S01,S02 | planned |

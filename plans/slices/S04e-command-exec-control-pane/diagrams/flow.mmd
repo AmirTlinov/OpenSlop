@@ -1,0 +1,10 @@
+flowchart TD
+    A[User presses Run proof lane] --> B[GUI starts fixed standalone streamCodexCommandWithControl]
+    B --> C[Output READY arrives]
+    C --> D[Surface becomes awaitingWrite]
+    D --> E[User sends raw stdin]
+    E --> F[Output PING arrives]
+    F --> G[Surface becomes awaitingTerminate]
+    G --> H[User presses Terminate]
+    H --> I[Final result arrives]
+    I --> J[Surface becomes completed]

@@ -17,6 +17,7 @@ let package = Package(
         .executable(name: "OpenSlopTerminalSurfaceProbe", targets: ["OpenSlopTerminalSurfaceProbe"]),
         .executable(name: "OpenSlopCommandExecProbe", targets: ["OpenSlopCommandExecProbe"]),
         .executable(name: "OpenSlopCommandExecControlProbe", targets: ["OpenSlopCommandExecControlProbe"]),
+        .executable(name: "OpenSlopCommandExecControlSurfaceProbe", targets: ["OpenSlopCommandExecControlSurfaceProbe"]),
         .executable(name: "OpenSlopCommandExecControlNegativeProbe", targets: ["OpenSlopCommandExecControlNegativeProbe"]),
     ],
     targets: [
@@ -68,6 +69,11 @@ let package = Package(
             name: "OpenSlopCommandExecControlProbe",
             dependencies: ["WorkbenchCore"],
             path: "Sources/OpenSlopCommandExecControlProbe"
+        ),
+        .executableTarget(
+            name: "OpenSlopCommandExecControlSurfaceProbe",
+            dependencies: ["WorkbenchCore"],
+            path: "Sources/OpenSlopCommandExecControlSurfaceProbe"
         ),
         .executableTarget(
             name: "OpenSlopCommandExecControlNegativeProbe",

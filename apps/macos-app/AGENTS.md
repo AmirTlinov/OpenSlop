@@ -14,6 +14,7 @@ macos-app
    │  ├─ CodexTranscriptSnapshot.swift
    │  ├─ CodexApprovalRequest.swift
    │  ├─ CodexCommandExec.swift
+   │  ├─ CodexCommandExecControlSurface.swift
    │  ├─ CodexTerminalSurface.swift
    │  ├─ RepoRootLocator.swift
    │  └─ CoreDaemonClient.swift
@@ -22,6 +23,7 @@ macos-app
    │  ├─ WorkbenchSeed.swift
    │  ├─ WorkbenchRootView.swift
    │  ├─ ApprovalSheetView.swift
+   │  ├─ CommandExecControlPaneView.swift
    │  ├─ TerminalPaneView.swift
    │  ├─ SidebarPanelView.swift
    │  ├─ TimelinePanelView.swift
@@ -41,7 +43,9 @@ macos-app
    │  └─ main.swift
    ├─ OpenSlopCommandExecProbe/
    │  └─ main.swift
-   └─ OpenSlopCommandExecControlProbe/
+   ├─ OpenSlopCommandExecControlProbe/
+   │  └─ main.swift
+   └─ OpenSlopCommandExecControlSurfaceProbe/
       └─ main.swift
 ```
 
@@ -58,3 +62,6 @@ macos-app
 - `OpenSlopCommandExecControlProbe` доказывает следующий law: one same-connection streaming exec принимает follow-up `write`, echo'ит `PING`, потом завершается через follow-up `terminate`.
 - `WorkbenchCore/CodexTerminalSurface.swift` materialize'ит первый read-only/live-only terminal surface только из streamed transcript, когда есть `processId` и raw `terminalStdin`.
 - `TerminalPaneView` показывает этот surface в inspector как честный live-only pane без stdin control, resize и reconnect claims.
+- `WorkbenchCore/CodexCommandExecControlSurface.swift` держит отдельную UI truth для guided standalone exec proof contour: live output, stable `processId`, stage `awaitingWrite/awaitingTerminate`, final exit.
+- `CommandExecControlPaneView` показывает этот contour в inspector и честно говорит, что это пока fixed proof command + bounded one-write/one-terminate lane, а не full terminal runtime.
+- `OpenSlopCommandExecControlSurfaceProbe` доказывает, что GUI surface и probe share one same-connection proof contour с `READY -> PING -> terminate`.

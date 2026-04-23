@@ -1,0 +1,29 @@
+# ACCEPTANCE
+
+- `WorkbenchCore/CodexCommandExecControlSurface.swift` держит отдельную UI truth для standalone exec contour:
+  - `command`,
+  - `processId`,
+  - `mergedOutput`,
+  - `stdout` / `stderr`,
+  - `exitCode`,
+  - `stage`,
+  - `lastError`.
+- `CommandExecControlPaneView` показывает:
+  - fixed argv proof command,
+  - raw stdin editor,
+  - live output box,
+  - stage badge,
+  - stable `processId`,
+  - optional final exit.
+- `WorkbenchRootView` умеет:
+  - запустить fixed standalone `streamCodexCommandWithControl`,
+  - дождаться first output и попросить `write`,
+  - дождаться next output и попросить `terminate`,
+  - завершить pane в `completed` или `failed`.
+- `OpenSlopCommandExecControlSurfaceProbe` доказывает end-to-end:
+  - `stage=completed`,
+  - stable `processId`,
+  - `stdout` держит `READY` и echoed `PING`,
+  - final `stdout/stderr` пусты,
+  - exit code non-zero после terminate.
+- Слайс не заявляет arbitrary argv usefulness, resize, reconnect, multi-client, arbitrary control order и transcript/session ownership для этого contour.
