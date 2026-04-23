@@ -10,6 +10,7 @@
 - typed `commandExecution` transcript surface поверх того же streaming contour.
 - standalone connection-scoped `command/exec` proof lane из S04a.
 - bounded same-connection `command/exec` control proof lane из S04b.
+- read-only `git-review-snapshot` operation из S06a.
 
 Текущая карта ответственности:
 - stdio transport между GUI и daemon;
@@ -23,4 +24,5 @@
 - fail-closed timeout для `codex-command-exec-control-stream`, если follow-up `write/terminate` не пришёл примерно за 5 секунд;
 - bounded interactive follow-up control для standalone `codex-command-exec-control-stream`: repeated output-paced `write`, one `closeStdin`, optional `terminate`;
 - standalone PTY resize follow-up для того же bounded contour: initial `tty` + `size`, same-connection `resize`, strict `processId` check и дальнейший fail-closed dialogue;
-- честные error responses, когда session пережила restart раньше первого completed turn.
+- честные error responses, когда session пережила restart раньше первого completed turn;
+- daemon-owned Git snapshot для Inspector: Swift не вызывает `git` сам, а только показывает typed response.

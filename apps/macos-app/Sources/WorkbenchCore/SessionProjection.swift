@@ -43,6 +43,7 @@ struct CoreDaemonRequest: Codable, Sendable {
     let rows: Int?
     let deltaBase64: String?
     let closeStdin: Bool?
+    let gitPath: String?
 
     init(
         operation: String,
@@ -58,7 +59,8 @@ struct CoreDaemonRequest: Codable, Sendable {
         cols: Int? = nil,
         rows: Int? = nil,
         deltaBase64: String? = nil,
-        closeStdin: Bool? = nil
+        closeStdin: Bool? = nil,
+        gitPath: String? = nil
     ) {
         self.operation = operation
         self.sessionId = sessionId
@@ -74,6 +76,7 @@ struct CoreDaemonRequest: Codable, Sendable {
         self.rows = rows
         self.deltaBase64 = deltaBase64
         self.closeStdin = closeStdin
+        self.gitPath = gitPath
     }
 }
 

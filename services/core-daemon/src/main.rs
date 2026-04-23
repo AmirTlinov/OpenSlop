@@ -1,3 +1,4 @@
+use git_domain::load_git_review_snapshot;
 use provider_domain::{
     CodexApprovalDecision, CodexApprovalRequest, CodexCommandExecControlRequest,
     CodexCommandExecOutputDelta, CodexCommandExecOutputStream, CodexCommandExecParams,
@@ -43,6 +44,7 @@ struct StdioRequest {
     rows: Option<u16>,
     delta_base64: Option<String>,
     close_stdin: Option<bool>,
+    git_path: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -129,6 +131,14 @@ fn main() {
         return;
     }
 
+    if args.as_slice() == ["--git-review-snapshot"] {
+        match git_review_snapshot_json(&repo_root, None, true) {
+            Ok(payload) => println!("{payload}"),
+            Err(error) => exit_with_error(error),
+        }
+        return;
+    }
+
     if args.len() == 3 && args[0] == "--read-codex-transcript" {
         match codex_read_transcript_json(&repo_root, &args[1], true) {
             Ok(payload) => println!("{payload}"),
@@ -178,7 +188,7 @@ fn main() {
     }
 
     eprintln!(
-        "OpenSlop core-daemon supports: --heartbeat | --query session-list | --start-codex-session | --read-codex-transcript <session-id> _ | --submit-codex-turn <session-id> <input> | --serve-stdio | --reset-session-store | --upsert-proof-session | --print-session-store-path"
+        "OpenSlop core-daemon supports: --heartbeat | --query session-list | --start-codex-session | --git-review-snapshot | --read-codex-transcript <session-id> _ | --submit-codex-turn <session-id> <input> | --serve-stdio | --reset-session-store | --upsert-proof-session | --print-session-store-path"
     );
 }
 
@@ -205,6 +215,15 @@ fn session_list_json(repo_root: &Path, pretty: bool) -> Result<String, String> {
     } else {
         serde_json::to_string(&projection).map_err(|error| error.to_string())
     }
+}
+
+fn git_review_snapshot_json(
+    repo_root: &Path,
+    focused_path: Option<&str>,
+    pretty: bool,
+) -> Result<String, String> {
+    let snapshot = load_git_review_snapshot(repo_root, focused_path);
+    serialize_payload(&snapshot, pretty)
 }
 
 fn codex_start_session_json(repo_root: &Path, pretty: bool) -> Result<String, String> {
@@ -800,6 +819,12 @@ fn handle_parsed_stdio_request(request: StdioRequest, repo_root: &Path) -> Strin
             Ok(payload) => payload,
             Err(message) => serialize_error(message),
         },
+        "git-review-snapshot" => {
+            match git_review_snapshot_json(repo_root, request.git_path.as_deref(), false) {
+                Ok(payload) => payload,
+                Err(message) => serialize_error(message),
+            }
+        }
         "codex-start-session" => match codex_start_session_json(repo_root, false) {
             Ok(payload) => payload,
             Err(message) => serialize_error(message),
@@ -1136,6 +1161,7 @@ mod tests {
             rows: None,
             delta_base64: None,
             close_stdin: None,
+            git_path: None,
         };
         let mut reader = io::BufReader::new(io::Cursor::new(Vec::<u8>::new()));
         let mut writer = Vec::<u8>::new();

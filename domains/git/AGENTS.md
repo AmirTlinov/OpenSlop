@@ -11,10 +11,18 @@
 ```text
 git
 ├─ AGENTS.md
-└─ docs/
-   └─ context.mmd
+├─ docs/
+│  └─ context.mmd
+└─ rust/
+   └─ git-domain/
+      ├─ Cargo.toml
+      └─ src/
+         ├─ lib.rs
+         └─ review_snapshot.rs
 ```
 
 Текущее состояние:
-- Материализована карта домена.
-- Код появится по owning slices, когда домен станет активным фронтом реализации.
+- S06a materialized первый read-only `GitReviewSnapshot`.
+- Домен владеет Git snapshot contract: branch/head, dirty state, changed files, bounded diff и bounded file preview.
+- Snapshot только читает Git/worktree и не stage/commit/write.
+- Artifact registry, worktree/session binding и full patch lifecycle остаются planned parent S06 work.

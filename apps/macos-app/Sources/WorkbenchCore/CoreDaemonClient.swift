@@ -39,6 +39,10 @@ public struct CoreDaemonClient: Sendable {
         try await SharedCoreDaemonTransport.instance.fetchSessionProjection()
     }
 
+    public func fetchGitReviewSnapshot(selectedPath: String? = nil) async throws -> DaemonGitReviewSnapshot {
+        try await SharedCoreDaemonTransport.instance.fetchGitReviewSnapshot(selectedPath: selectedPath)
+    }
+
     public func startCodexSession() async throws -> DaemonCodexSessionBootstrap {
         try await SharedCoreDaemonTransport.instance.startCodexSession()
     }
@@ -145,6 +149,17 @@ private actor CoreDaemonTransport {
     func fetchSessionProjection() throws -> DaemonSessionProjection {
         try ensureRunning()
         return try send(operation: "session-list", expecting: DaemonSessionProjection.self)
+    }
+
+    func fetchGitReviewSnapshot(selectedPath: String?) throws -> DaemonGitReviewSnapshot {
+        try ensureRunning()
+        return try send(
+            request: CoreDaemonRequest(
+                operation: "git-review-snapshot",
+                gitPath: selectedPath
+            ),
+            expecting: DaemonGitReviewSnapshot.self
+        )
     }
 
     func startCodexSession() throws -> DaemonCodexSessionBootstrap {

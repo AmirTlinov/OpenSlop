@@ -2,6 +2,7 @@
 members = [
     "domains/session/rust/session-domain",
     "domains/provider/rust/provider-domain",
+    "domains/git/rust/git-domain",
     "services/core-daemon",
 ]
 resolver = "2"

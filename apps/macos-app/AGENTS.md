@@ -19,6 +19,7 @@ macos-app
    │  ├─ CodexCommandExec.swift
    │  ├─ CodexCommandExecControlSurface.swift
    │  ├─ CodexTerminalSurface.swift
+   │  ├─ GitReviewSnapshot.swift
    │  ├─ RepoRootLocator.swift
    │  └─ CoreDaemonClient.swift
    ├─ OpenSlopApp/
@@ -29,6 +30,7 @@ macos-app
    │  ├─ ApprovalSheetView.swift
    │  ├─ MonospacedTailBlockView.swift
    │  ├─ CommandExecControlPaneView.swift
+   │  ├─ GitReviewPaneView.swift
    │  ├─ TerminalPaneView.swift
    │  ├─ SidebarPanelView.swift
    │  ├─ TimelinePanelView.swift
@@ -58,13 +60,17 @@ macos-app
    │  └─ main.swift
    ├─ OpenSlopCommandExecControlSurfaceProbe/
    │  └─ main.swift
+   ├─ OpenSlopCommandExecControlNegativeProbe/
+   │  └─ main.swift
    ├─ OpenSlopCommandExecControlTimeoutProbe/
    │  └─ main.swift
    ├─ OpenSlopCommandExecInteractiveProbe/
    │  └─ main.swift
    ├─ OpenSlopCommandExecResizeProbe/
    │  └─ main.swift
-   └─ OpenSlopCommandExecResizeSurfaceProbe/
+   ├─ OpenSlopCommandExecResizeSurfaceProbe/
+   │  └─ main.swift
+   └─ OpenSlopGitReviewProbe/
       └─ main.swift
 ```
 
@@ -106,3 +112,6 @@ macos-app
 
 - `WorkbenchTimelineEmptyStateProjector` строит center empty/unavailable state только из existing shell truth. Он запрещает synthetic S04/proof-storytelling в пустом timeline.
 - `OpenSlopTimelineEmptyStateProbe` доказывает no-session, empty-transcript, unavailable-transcript и live-transcript nil-empty-state paths.
+
+- `WorkbenchCore/GitReviewSnapshot.swift` и `GitReviewPaneView.swift` materialize S06a read-only Git review surface. UI показывает daemon snapshot и не вызывает Git напрямую.
+- `OpenSlopGitReviewProbe` доказывает dirty fixture, selected file preview, non-git warning и no-mutation law.

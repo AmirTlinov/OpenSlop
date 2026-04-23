@@ -4,6 +4,11 @@ import WorkbenchCore
 struct InspectorPanelView: View {
     let cards: [InspectorCardSeed]
     let terminalSurface: DaemonCodexTerminalSurface?
+    let gitReviewSnapshot: DaemonGitReviewSnapshot?
+    let gitReviewError: String?
+    let isGitReviewLoading: Bool
+    let onRefreshGitReview: () -> Void
+    let onSelectGitReviewPath: (String?) -> Void
     @Binding var commandExecProofMode: CommandExecProofMode
     @Binding var commandExecStdinText: String
     let commandExecSurface: DaemonCodexCommandExecControlSurface?
@@ -42,6 +47,14 @@ struct InspectorPanelView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
                     }
+
+                    GitReviewPaneView(
+                        snapshot: gitReviewSnapshot,
+                        errorMessage: gitReviewError,
+                        isLoading: isGitReviewLoading,
+                        onRefresh: onRefreshGitReview,
+                        onSelectPath: onSelectGitReviewPath
+                    )
 
                     if let terminalSurface {
                         TerminalPaneView(surface: terminalSurface)

@@ -1,0 +1,14 @@
+flowchart LR
+    Inspector[Inspector Git Review pane] --> Client[CoreDaemonClient\nfetchGitReviewSnapshot]
+    Client --> Daemon[core-daemon\ngit-review-snapshot]
+    Daemon --> Domain[git-domain\nread-only snapshot]
+    Domain --> Git[git CLI\nstatus/diff/rev-parse]
+    Git --> Domain
+    Domain --> Daemon
+    Daemon --> Client
+    Client --> Inspector
+
+    Inspector --> Select[Select changed file]
+    Select --> Client
+
+    Domain -.-> Law[No mutation:\nstatus + HEAD unchanged]

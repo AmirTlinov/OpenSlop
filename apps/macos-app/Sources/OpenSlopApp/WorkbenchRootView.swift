@@ -90,6 +90,10 @@ struct WorkbenchRootView: View {
     @State private var commandExecProofMode: CommandExecProofMode = .interactiveStdin
     @State private var commandExecStdinText = DaemonCodexCommandExecProofCommand.defaultInteractiveInput
     @State private var commandExecSurface: DaemonCodexCommandExecControlSurface?
+    @State private var gitReviewSnapshot: DaemonGitReviewSnapshot?
+    @State private var gitReviewSelectedPath: String?
+    @State private var gitReviewError: String?
+    @State private var isGitReviewLoading = false
     @State private var commandExecContinuation: CheckedContinuation<DaemonCodexCommandExecControlRequest?, Never>?
     @State private var commandExecAllowsMoreControls = false
     @State private var commandExecResizeSent = false
@@ -249,6 +253,15 @@ struct WorkbenchRootView: View {
                                 pendingApproval: pendingApproval
                             ),
                             terminalSurface: DaemonCodexTerminalSurfaceProjector.liveSurface(from: transcript),
+                            gitReviewSnapshot: gitReviewSnapshot,
+                            gitReviewError: gitReviewError,
+                            isGitReviewLoading: isGitReviewLoading,
+                            onRefreshGitReview: {
+                                Task { await loadGitReview(selectedPath: gitReviewSelectedPath) }
+                            },
+                            onSelectGitReviewPath: { path in
+                                Task { await loadGitReview(selectedPath: path) }
+                            },
                             commandExecProofMode: $commandExecProofMode,
                             commandExecStdinText: $commandExecStdinText,
                             commandExecSurface: commandExecSurface,
@@ -298,7 +311,10 @@ struct WorkbenchRootView: View {
                     .frame(width: 180)
 
                     Button("Обновить") {
-                        Task { await loadSessions(force: true, preferredSessionID: shellState.selectedSessionID) }
+                        Task {
+                            await loadSessions(force: true, preferredSessionID: shellState.selectedSessionID)
+                            await loadGitReview(selectedPath: gitReviewSelectedPath)
+                        }
                     }
                     .keyboardShortcut("r", modifiers: .command)
                     Button("Запустить") {
@@ -318,6 +334,7 @@ struct WorkbenchRootView: View {
         }
         .task {
             await loadSessions(force: false, preferredSessionID: nil)
+            await loadGitReview(selectedPath: gitReviewSelectedPath)
         }
         .task(id: shellState.selectedSessionID) {
             await loadTranscriptForSelection(force: true)
@@ -430,6 +447,24 @@ struct WorkbenchRootView: View {
     }
 
     @MainActor
+    private func loadGitReview(selectedPath: String?) async {
+        isGitReviewLoading = true
+        gitReviewError = nil
+
+        do {
+            let snapshot = try await client.fetchGitReviewSnapshot(selectedPath: selectedPath)
+            gitReviewSnapshot = snapshot
+            gitReviewSelectedPath = snapshot.selectedPath
+            isGitReviewLoading = false
+        } catch {
+            gitReviewSnapshot = nil
+            gitReviewSelectedPath = selectedPath
+            gitReviewError = error.localizedDescription
+            isGitReviewLoading = false
+        }
+    }
+
+    @MainActor
     private func startCodexSession() async {
         codexBootstrapState = .running
 
@@ -513,6 +548,7 @@ struct WorkbenchRootView: View {
             pendingApproval = nil
             transcriptState = .loaded(summary: transcriptSummary(for: snapshot))
             await loadSessions(force: true, preferredSessionID: selectedSession.id)
+            await loadGitReview(selectedPath: gitReviewSelectedPath)
         } catch {
             pendingApproval = nil
             transcriptState = transcriptUnavailableState(for: error)
