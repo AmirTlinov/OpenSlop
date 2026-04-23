@@ -30,6 +30,14 @@ struct ErrorResponse {
     message: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CodexTranscriptStreamEventResponse {
+    kind: &'static str,
+    session_id: String,
+    snapshot: provider_domain::CodexTranscriptSnapshot,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CodexSessionBootstrapResponse {
@@ -214,6 +222,35 @@ fn codex_submit_turn_json(
     serialize_payload(&transcript, pretty)
 }
 
+fn codex_submit_turn_stream_json(
+    repo_root: &Path,
+    session_id: &str,
+    input_text: &str,
+    pretty: bool,
+    writer: &mut impl Write,
+) -> Result<String, String> {
+    let mut registry = CODEX_RUNTIME_REGISTRY
+        .lock()
+        .map_err(|_| "codex runtime registry lock poisoned".to_string())?;
+
+    let transcript = registry
+        .stream_turn(repo_root, session_id, input_text, |snapshot| {
+            let payload = serde_json::to_string(&CodexTranscriptStreamEventResponse {
+                kind: "codex_transcript_stream_event",
+                session_id: session_id.to_string(),
+                snapshot,
+            })
+            .map_err(|error| error.to_string())?;
+            writeln!(writer, "{payload}").map_err(|error| error.to_string())?;
+            writer.flush().map_err(|error| error.to_string())
+        })
+        .map_err(|error| error.to_string())?;
+
+    let session = map_transcript_to_session(repo_root, session_id, &transcript);
+    upsert_runtime_session(repo_root, &session).map_err(|error| error.to_string())?;
+    serialize_payload(&transcript, pretty)
+}
+
 fn serialize_payload<T: Serialize>(payload: &T, pretty: bool) -> Result<String, String> {
     if pretty {
         serde_json::to_string_pretty(payload).map_err(|error| error.to_string())
@@ -315,7 +352,24 @@ fn serve_stdio(repo_root: &Path) -> io::Result<()> {
             continue;
         }
 
-        let response = handle_stdio_request(&line, repo_root);
+        let request = match serde_json::from_str::<StdioRequest>(&line) {
+            Ok(request) => request,
+            Err(error) => {
+                writeln!(
+                    writer,
+                    "{}",
+                    serialize_error(format!("invalid request: {error}"))
+                )?;
+                writer.flush()?;
+                continue;
+            }
+        };
+
+        if handle_streaming_stdio_request(&request, repo_root, &mut writer)? {
+            continue;
+        }
+
+        let response = handle_parsed_stdio_request(request, repo_root);
         writeln!(writer, "{response}")?;
         writer.flush()?;
     }
@@ -323,12 +377,16 @@ fn serve_stdio(repo_root: &Path) -> io::Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 fn handle_stdio_request(line: &str, repo_root: &Path) -> String {
     let request = match serde_json::from_str::<StdioRequest>(line) {
         Ok(request) => request,
         Err(error) => return serialize_error(format!("invalid request: {error}")),
     };
+    handle_parsed_stdio_request(request, repo_root)
+}
 
+fn handle_parsed_stdio_request(request: StdioRequest, repo_root: &Path) -> String {
     let operation = request.operation.or(request.query).unwrap_or_default();
 
     match operation.as_str() {
@@ -360,6 +418,37 @@ fn handle_stdio_request(line: &str, repo_root: &Path) -> String {
         },
         other => serialize_error(format!("unsupported operation: {other}")),
     }
+}
+
+fn handle_streaming_stdio_request(
+    request: &StdioRequest,
+    repo_root: &Path,
+    writer: &mut impl Write,
+) -> io::Result<bool> {
+    let operation = request
+        .operation
+        .clone()
+        .or(request.query.clone())
+        .unwrap_or_default();
+
+    if operation != "codex-submit-turn-stream" {
+        return Ok(false);
+    }
+
+    let response = match (request.session_id.as_deref(), request.input_text.as_deref()) {
+        (Some(session_id), Some(input_text)) => {
+            match codex_submit_turn_stream_json(repo_root, session_id, input_text, false, writer) {
+                Ok(payload) => payload,
+                Err(message) => serialize_error(message),
+            }
+        }
+        (None, _) => serialize_error("missing sessionId".to_string()),
+        (_, None) => serialize_error("missing inputText".to_string()),
+    };
+
+    writeln!(writer, "{response}")?;
+    writer.flush()?;
+    Ok(true)
 }
 
 fn serialize_error(message: String) -> String {

@@ -12,9 +12,11 @@ flowchart LR
     Resume --> TurnStart["turn/start"]
     LiveThread --> TurnStart
     TurnStart --> Poll["thread/read polling"]
-    Poll --> Snapshot["CodexTranscriptSnapshot"]
-    ArchiveRead --> Snapshot
-    Snapshot --> Daemon
+    Poll --> Stream["successive CodexTranscriptSnapshot"]
+    Poll --> Final["terminal CodexTranscriptSnapshot"]
+    ArchiveRead --> Final
+    Stream --> Daemon
+    Final --> Daemon
     Daemon --> GUI
 
     Note1["до первого completed turn thread ещё не materialized на диск"]

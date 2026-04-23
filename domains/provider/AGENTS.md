@@ -25,6 +25,6 @@ provider
 Текущее состояние:
 - Materialized exact contract subset для `initialize`, `thread/start`, `thread/read`, `thread/resume` и `turn/start` на `codex-cli 0.123.0`.
 - `rust/provider-domain` владеет двумя честными путями:
-  - live bootstrap + first turn через живой runtime registry;
+  - live bootstrap + streaming turn через живой runtime registry;
   - cold transcript read и resume перед новым интерактивным turn после materialization.
 - Важная граница: до первого completed turn thread ещё не materialized на диск.

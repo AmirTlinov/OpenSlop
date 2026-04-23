@@ -20,9 +20,10 @@ codex app-server generate-json-schema --out /tmp/openslop-codex-schema
 - `turn/start` request/response.
 
 Этого достаточно для текущего честного contour:
-`core-daemon -> codex app-server -> thread/start -> first live turn -> read-only transcript snapshot`.
+`core-daemon -> codex app-server -> thread/start -> live turn -> successive transcript snapshots`.
 
 Важная граница текущего runtime:
 - до первого завершённого turn thread ещё не materialized на диск;
 - после materialization cold `thread/read` может вернуть архивный `thread.status.type = notLoaded`;
 - перед новым интерактивным turn на cold thread нужен `thread/resume`.
+- текущий streaming lane строится через daemon-owned polling successive `thread/read` snapshots.

@@ -11,7 +11,7 @@
 | `S01-workbench-shell` | Первое настоящее окно workbench | S00 | planned |
 | `S02-event-spine` | Canonical event log, IPC, projections | S00 | done |
 | `S03-codex-runtime` | Live Codex bootstrap lane через app-server | S02 | done |
-| `S04-transcript-approval-pty` | First live turn round-trip и daemon-owned read-only transcript | S03 | in progress |
+| `S04-transcript-approval-pty` | First live turn round-trip и daemon-owned streaming transcript | S03 | in progress |
 | `S05-claude-runtime` | Claude runtime через bridge | S02 | planned |
 | `S06-git-review-artifacts` | Diff, artifacts, worktrees | S02 | planned |
 | `S07-browser-preview` | Встроенный native preview browser | S01,S02 | planned |

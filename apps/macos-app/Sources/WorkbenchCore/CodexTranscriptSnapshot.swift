@@ -18,3 +18,9 @@ public struct DaemonCodexTranscriptItem: Codable, Equatable, Identifiable, Senda
     public let text: String
     public let turnStatus: String
 }
+
+public struct DaemonCodexTranscriptStreamEvent: Codable, Equatable, Sendable {
+    public let kind: String
+    public let sessionId: String
+    public let snapshot: DaemonCodexTranscript
+}

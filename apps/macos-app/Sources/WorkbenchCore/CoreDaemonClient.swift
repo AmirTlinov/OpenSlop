@@ -51,6 +51,18 @@ public struct CoreDaemonClient: Sendable {
         try await SharedCoreDaemonTransport.instance.submitCodexTurn(sessionId: sessionId, inputText: inputText)
     }
 
+    public func streamCodexTurn(
+        sessionId: String,
+        inputText: String,
+        onSnapshot: @escaping @Sendable (DaemonCodexTranscript) async -> Void
+    ) async throws -> DaemonCodexTranscript {
+        try await SharedCoreDaemonTransport.instance.streamCodexTurn(
+            sessionId: sessionId,
+            inputText: inputText,
+            onSnapshot: onSnapshot
+        )
+    }
+
     public func daemonProcessIdentifier() async throws -> Int32 {
         try await SharedCoreDaemonTransport.instance.daemonProcessIdentifier()
     }
@@ -95,6 +107,42 @@ private actor CoreDaemonTransport {
             ),
             expecting: DaemonCodexTranscript.self
         )
+    }
+
+    func streamCodexTurn(
+        sessionId: String,
+        inputText: String,
+        onSnapshot: @escaping @Sendable (DaemonCodexTranscript) async -> Void
+    ) async throws -> DaemonCodexTranscript {
+        try ensureRunning()
+        try sendRaw(
+            request: CoreDaemonRequest(
+                operation: "codex-submit-turn-stream",
+                sessionId: sessionId,
+                inputText: inputText
+            )
+        )
+
+        while true {
+            let response = try readResponseLine()
+
+            if let streamEvent = try? JSONDecoder().decode(DaemonCodexTranscriptStreamEvent.self, from: response),
+               streamEvent.kind == "codex_transcript_stream_event"
+            {
+                await onSnapshot(streamEvent.snapshot)
+                continue
+            }
+
+            if let decoded = try? JSONDecoder().decode(DaemonCodexTranscript.self, from: response) {
+                return decoded
+            }
+
+            if let errorResponse = try? JSONDecoder().decode(CoreDaemonErrorResponse.self, from: response) {
+                throw CoreDaemonClientError.invalidResponse(errorResponse.message)
+            }
+
+            throw CoreDaemonClientError.decodeFailed(String(decoding: response, as: UTF8.self))
+        }
     }
 
     func daemonProcessIdentifier() throws -> Int32 {
@@ -146,6 +194,21 @@ private actor CoreDaemonTransport {
     }
 
     private func send<Response: Decodable>(request: CoreDaemonRequest, expecting type: Response.Type) throws -> Response {
+        try sendRaw(request: request)
+        let response = try readResponseLine()
+
+        if let decoded = try? JSONDecoder().decode(Response.self, from: response) {
+            return decoded
+        }
+
+        if let errorResponse = try? JSONDecoder().decode(CoreDaemonErrorResponse.self, from: response) {
+            throw CoreDaemonClientError.invalidResponse(errorResponse.message)
+        }
+
+        throw CoreDaemonClientError.decodeFailed(String(decoding: response, as: UTF8.self))
+    }
+
+    private func sendRaw(request: CoreDaemonRequest) throws {
         guard let stdinHandle else {
             throw CoreDaemonClientError.processLaunchFailed("stdin unavailable")
         }
@@ -166,18 +229,6 @@ private actor CoreDaemonTransport {
         } catch {
             throw CoreDaemonClientError.processLaunchFailed(error.localizedDescription)
         }
-
-        let response = try readResponseLine()
-
-        if let decoded = try? JSONDecoder().decode(Response.self, from: response) {
-            return decoded
-        }
-
-        if let errorResponse = try? JSONDecoder().decode(CoreDaemonErrorResponse.self, from: response) {
-            throw CoreDaemonClientError.invalidResponse(errorResponse.message)
-        }
-
-        throw CoreDaemonClientError.decodeFailed(String(decoding: response, as: UTF8.self))
     }
 
     private func readResponseLine() throws -> Data {

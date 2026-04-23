@@ -6,26 +6,35 @@ import WorkbenchCore
 struct OpenSlopTurnProbe {
     static func main() async {
         let client = CoreDaemonClient()
+        let recorder = StreamRecorder()
 
         do {
             let repoRoot = try RepoRootLocator.locate()
             let bootstrap = try await client.startCodexSession()
             let bootstrapPID = try await client.daemonProcessIdentifier()
-            let transcript = try await client.submitCodexTurn(sessionId: bootstrap.session.id, inputText: "Reply with exactly OK.")
+            let transcript = try await client.streamCodexTurn(
+                sessionId: bootstrap.session.id,
+                inputText: "Reply with exactly OK."
+            ) { snapshot in
+                await recorder.record(snapshot)
+            }
             let readback = try await client.fetchCodexTranscript(sessionId: bootstrap.session.id)
             let finalPID = try await client.daemonProcessIdentifier()
             let coldReadback = try readColdTranscript(repoRoot: repoRoot, sessionId: bootstrap.session.id)
+            let streamedSnapshots = await recorder.snapshots()
 
             let daemonReused = bootstrapPID == finalPID
             let containsUserPrompt = readback.items.contains { $0.kind == "user" && $0.text.contains("Reply with exactly OK.") }
             let containsAgentOK = readback.items.contains { $0.kind == "agent" && $0.text.trimmingCharacters(in: .whitespacesAndNewlines) == "OK" }
             let coldReadContainsUserPrompt = coldReadback.items.contains { $0.kind == "user" && $0.text.contains("Reply with exactly OK.") }
             let coldReadContainsAgentOK = coldReadback.items.contains { $0.kind == "agent" && $0.text.trimmingCharacters(in: .whitespacesAndNewlines) == "OK" }
+            let sawStreamingProgress = streamedSnapshots.contains { $0.lastTurnStatus == "inProgress" || $0.threadStatus == "active" }
 
             print("bootstrap_thread=\(bootstrap.providerThreadId) transport=\(bootstrap.transport) pid_bootstrap=\(bootstrapPID) pid_final=\(finalPID) reused=\(daemonReused)")
             print("turn_count=\(readback.turnCount) last_turn=\(readback.lastTurnStatus ?? "—") items=\(readback.items.count)")
             print("contains_user_prompt=\(containsUserPrompt) contains_agent_ok=\(containsAgentOK)")
             print("submit_snapshot_items=\(transcript.items.count) readback_items=\(readback.items.count)")
+            print("streamed_snapshots=\(streamedSnapshots.count) saw_streaming_progress=\(sawStreamingProgress)")
             print("cold_read_status=\(coldReadback.threadStatus) cold_read_turns=\(coldReadback.turnCount) cold_contains_user_prompt=\(coldReadContainsUserPrompt) cold_contains_agent_ok=\(coldReadContainsAgentOK)")
 
             guard daemonReused else {
@@ -40,6 +49,11 @@ struct OpenSlopTurnProbe {
 
             guard containsUserPrompt, containsAgentOK else {
                 fputs("OpenSlopTurnProbe failed: transcript snapshot is missing expected user or agent content.\n", stderr)
+                exit(EXIT_FAILURE)
+            }
+
+            guard sawStreamingProgress else {
+                fputs("OpenSlopTurnProbe failed: no in-progress transcript snapshot arrived during streaming turn.\n", stderr)
                 exit(EXIT_FAILURE)
             }
 
@@ -76,6 +90,18 @@ struct OpenSlopTurnProbe {
         }
 
         return try JSONDecoder().decode(DaemonCodexTranscript.self, from: stdout)
+    }
+}
+
+private actor StreamRecorder {
+    private var values: [DaemonCodexTranscript] = []
+
+    func record(_ snapshot: DaemonCodexTranscript) {
+        values.append(snapshot)
+    }
+
+    func snapshots() -> [DaemonCodexTranscript] {
+        values
     }
 }
 

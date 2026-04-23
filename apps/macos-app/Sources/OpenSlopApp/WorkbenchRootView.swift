@@ -45,6 +45,7 @@ private enum TranscriptState {
     case idle
     case loading
     case loaded(summary: String)
+    case streaming(summary: String)
     case submitting
     case unavailable(message: String)
     case failed(message: String)
@@ -57,8 +58,10 @@ private enum TranscriptState {
             return "Читаем transcript snapshot из core-daemon."
         case .loaded(let summary):
             return summary
+        case .streaming(let summary):
+            return summary
         case .submitting:
-            return "Запускаем live turn и ждём завершённый transcript snapshot."
+            return "Запускаем live turn и ждём первые streaming snapshot’ы."
         case .unavailable(let message):
             return message
         case .failed(let message):
@@ -97,7 +100,18 @@ struct WorkbenchRootView: View {
         guard selectedProvider == "Codex", let selectedSession else {
             return false
         }
-        return looksLikeLiveCodexThread(selectedSession.id) && !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return !isTurnStreaming
+            && looksLikeLiveCodexThread(selectedSession.id)
+            && !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var isTurnStreaming: Bool {
+        switch transcriptState {
+        case .submitting, .streaming:
+            return true
+        default:
+            return false
+        }
     }
 
     var body: some View {
@@ -261,7 +275,15 @@ struct WorkbenchRootView: View {
         transcriptState = .submitting
 
         do {
-            let snapshot = try await client.submitCodexTurn(sessionId: selectedSession.id, inputText: input)
+            let snapshot = try await client.streamCodexTurn(
+                sessionId: selectedSession.id,
+                inputText: input
+            ) { streamedSnapshot in
+                await MainActor.run {
+                    transcript = streamedSnapshot
+                    transcriptState = .streaming(summary: transcriptSummary(for: streamedSnapshot))
+                }
+            }
             transcript = snapshot
             transcriptState = .loaded(summary: transcriptSummary(for: snapshot))
             await loadSessions(force: true, preferredSessionID: selectedSession.id)

@@ -34,5 +34,5 @@ macos-app
 
 Текущий реальный proof target для S04:
 - `WorkbenchCore/CoreDaemonClient.swift` держит long-lived stdio transport к `core-daemon --serve-stdio`.
-- `WorkbenchRootView` отправляет первый live turn, читает daemon-owned transcript snapshot и не владеет runtime truth.
-- `OpenSlopTurnProbe` доказывает reuse daemon PID и наличие user/agent transcript items после completed turn.
+- `WorkbenchRootView` отправляет live turn, получает successive daemon-owned transcript snapshots и не владеет runtime truth.
+- `OpenSlopTurnProbe` доказывает reuse daemon PID, streaming progress и наличие user/agent transcript items после completed turn.

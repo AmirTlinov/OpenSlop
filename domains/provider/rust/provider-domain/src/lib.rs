@@ -13,6 +13,7 @@ const TRANSPORT: &str = "stdio";
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 const TURN_COMPLETION_TIMEOUT: Duration = Duration::from_secs(45);
 const TURN_POLL_INTERVAL: Duration = Duration::from_millis(800);
+const STREAM_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const SUPPRESSED_NOTIFICATION_METHODS: &[&str] =
     &["thread/started", "turn/started", "turn/completed"];
 
@@ -108,6 +109,9 @@ pub enum CodexRuntimeError {
     ThreadNeedsLiveRuntime {
         thread_id: String,
     },
+    StreamCallbackFailed {
+        message: String,
+    },
     TurnDidNotComplete {
         thread_id: String,
         waited_ms: u128,
@@ -162,6 +166,9 @@ impl Display for CodexRuntimeError {
                     f,
                     "thread {thread_id} ещё не materialized на диск; первый turn нужно завершить в том же живом daemon runtime, где session была создана"
                 )
+            }
+            CodexRuntimeError::StreamCallbackFailed { message } => {
+                write!(f, "не удалось отдать streaming snapshot наружу: {message}")
             }
             CodexRuntimeError::TurnDidNotComplete {
                 thread_id,
@@ -279,9 +286,24 @@ impl CodexRuntimeRegistry {
         thread_id: &str,
         input_text: &str,
     ) -> Result<CodexTranscriptSnapshot, CodexRuntimeError> {
+        self.stream_turn(repo_root, thread_id, input_text, |_| {
+            Ok::<(), std::convert::Infallible>(())
+        })
+    }
+
+    pub fn stream_turn<F, E>(
+        &mut self,
+        repo_root: &Path,
+        thread_id: &str,
+        input_text: &str,
+        on_snapshot: F,
+    ) -> Result<CodexTranscriptSnapshot, CodexRuntimeError>
+    where
+        F: FnMut(CodexTranscriptSnapshot) -> Result<(), E>,
+        E: Display,
+    {
         let process = self.ensure_session_process(repo_root, thread_id)?;
-        process.start_turn(thread_id, input_text)?;
-        process.wait_for_terminal_transcript(thread_id)
+        process.stream_turn(thread_id, input_text, on_snapshot)
     }
 
     fn ensure_session_process(
@@ -553,33 +575,9 @@ impl CodexAppServerProcess {
         &mut self,
         thread_id: &str,
     ) -> Result<CodexTranscriptSnapshot, CodexRuntimeError> {
-        let started = Instant::now();
-
-        loop {
-            if started.elapsed() > TURN_COMPLETION_TIMEOUT {
-                return Err(CodexRuntimeError::TurnDidNotComplete {
-                    thread_id: thread_id.to_string(),
-                    waited_ms: TURN_COMPLETION_TIMEOUT.as_millis(),
-                });
-            }
-
-            match self.read_transcript(thread_id) {
-                Ok(snapshot) if is_terminal_status(snapshot.last_turn_status.as_deref()) => {
-                    return Ok(snapshot);
-                }
-                Ok(_) => {
-                    thread::sleep(TURN_POLL_INTERVAL);
-                }
-                Err(CodexRuntimeError::ServerError { message, .. })
-                    if message.contains("not materialized yet")
-                        || message
-                            .contains("includeTurns is unavailable before first user message") =>
-                {
-                    thread::sleep(TURN_POLL_INTERVAL);
-                }
-                Err(error) => return Err(error),
-            }
-        }
+        self.poll_transcript_until_terminal(thread_id, TURN_POLL_INTERVAL, None, |_| {
+            Ok::<(), std::convert::Infallible>(())
+        })
     }
 
     fn read_transcript_value(
@@ -596,6 +594,70 @@ impl CodexAppServerProcess {
         }
 
         self.request_value(4, "thread/read", &params)
+    }
+
+    fn stream_turn<F, E>(
+        &mut self,
+        thread_id: &str,
+        input_text: &str,
+        on_snapshot: F,
+    ) -> Result<CodexTranscriptSnapshot, CodexRuntimeError>
+    where
+        F: FnMut(CodexTranscriptSnapshot) -> Result<(), E>,
+        E: Display,
+    {
+        let baseline = self.read_transcript(thread_id).ok();
+        self.start_turn(thread_id, input_text)?;
+        self.poll_transcript_until_terminal(thread_id, STREAM_POLL_INTERVAL, baseline, on_snapshot)
+    }
+
+    fn poll_transcript_until_terminal<F, E>(
+        &mut self,
+        thread_id: &str,
+        poll_interval: Duration,
+        mut last_snapshot: Option<CodexTranscriptSnapshot>,
+        mut on_snapshot: F,
+    ) -> Result<CodexTranscriptSnapshot, CodexRuntimeError>
+    where
+        F: FnMut(CodexTranscriptSnapshot) -> Result<(), E>,
+        E: Display,
+    {
+        let started = Instant::now();
+
+        loop {
+            if started.elapsed() > TURN_COMPLETION_TIMEOUT {
+                return Err(CodexRuntimeError::TurnDidNotComplete {
+                    thread_id: thread_id.to_string(),
+                    waited_ms: TURN_COMPLETION_TIMEOUT.as_millis(),
+                });
+            }
+
+            match self.read_transcript(thread_id) {
+                Ok(snapshot) => {
+                    let changed = last_snapshot.as_ref() != Some(&snapshot);
+                    if changed {
+                        on_snapshot(snapshot.clone()).map_err(|error| {
+                            CodexRuntimeError::StreamCallbackFailed {
+                                message: error.to_string(),
+                            }
+                        })?;
+                        last_snapshot = Some(snapshot.clone());
+                    }
+
+                    if is_terminal_status(snapshot.last_turn_status.as_deref()) {
+                        return Ok(snapshot);
+                    }
+
+                    thread::sleep(poll_interval);
+                }
+                Err(CodexRuntimeError::ServerError { message, .. })
+                    if is_materialization_gap_message(&message) =>
+                {
+                    thread::sleep(poll_interval);
+                }
+                Err(error) => return Err(error),
+            }
+        }
     }
 
     fn request_parse<P, R>(
@@ -1037,6 +1099,38 @@ mod tests {
         assert_eq!(snapshot.items[0].kind, "user");
         assert_eq!(snapshot.items[1].kind, "agent");
         assert_eq!(snapshot.items[1].text, "OK");
+    }
+
+    #[test]
+    fn stream_turn_emits_in_progress_snapshot_before_completion() {
+        let repo = tempdir().expect("temp repo should exist");
+        let binary = write_stub_codex_binary(repo.path(), false);
+        let mut registry = CodexRuntimeRegistry {
+            binary,
+            sessions: HashMap::new(),
+        };
+        let bootstrap = registry
+            .start_session(repo.path())
+            .expect("bootstrap should succeed");
+        let mut streamed = Vec::new();
+
+        let snapshot = registry
+            .stream_turn(
+                repo.path(),
+                &bootstrap.thread_id,
+                "Reply with exactly OK.",
+                |snapshot| {
+                    streamed.push(snapshot);
+                    Ok::<(), std::convert::Infallible>(())
+                },
+            )
+            .expect("streaming turn should complete");
+
+        assert_eq!(snapshot.last_turn_status.as_deref(), Some("completed"));
+        assert!(streamed.iter().any(|snapshot| {
+            snapshot.last_turn_status.as_deref() == Some("inProgress")
+                || snapshot.thread_status == "active"
+        }));
     }
 
     #[test]
