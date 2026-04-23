@@ -6,4 +6,5 @@
 - [x] Заменить hardcoded sidebar sessions на daemon-backed список.
 - [x] Добавить probe без GUI.
 - [x] Перевести client и probe на long-lived stdio transport.
-- [ ] Зафиксировать review verdict и closure receipt.
+- [x] Материализовать persisted session truth и rehydration beyond bootstrap data.
+- [x] Зафиксировать финальный reviewer verdict и closure receipt.

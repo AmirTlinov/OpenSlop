@@ -24,6 +24,7 @@ session
 ```
 
 Текущее состояние:
-- S02 materializes первый настоящий session projection path.
-- `rust/session-domain` держит минимальную daemon-owned session projection.
+- S02 materializes первый настоящий persisted session projection path.
+- `rust/session-domain` держит bootstrap sessions, SQLite-backed persisted truth и rehydration.
+- Session store живёт в repo-local runtime path `.openslop/state/session-store.sqlite3`.
 - Domain-local skill package фиксирует локальные инварианты этого slice.
