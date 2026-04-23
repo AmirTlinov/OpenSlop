@@ -10,6 +10,7 @@
 | `S00-repo-constitution` | Конституция репозитория, карты, buildable seeds | — | done |
 | `S01-workbench-shell` | Первое настоящее окно workbench | S00 | in progress |
 | `S01a-workbench-shell-state-restoration` | Persisted shell state, inspector toggle и первые semantic shell references | S00 | done |
+| `S01b-workbench-shell-layout-geometry` | Persisted window/sidebar/inspector geometry для shell layout | S01a | done |
 | `S02-event-spine` | Canonical event log, IPC, projections | S00 | done |
 | `S03-codex-runtime` | Live Codex bootstrap lane через app-server | S02 | done |
 | `S04-transcript-approval-pty` | Live turn transcript, native approvals и дальше PTY | S03 | in progress |

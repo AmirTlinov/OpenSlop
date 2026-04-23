@@ -11,11 +11,18 @@ struct OpenSlopShellStateProbe {
             fail("failed to create isolated defaults suite.")
         }
 
+        let layout = WorkbenchShellLayoutGeometry(
+            windowWidth: 1680,
+            windowHeight: 980,
+            sidebarWidth: 336,
+            inspectorWidth: 388
+        )
         let initial = WorkbenchShellState(
             selectedSessionID: "session-2",
             selectedProvider: "Claude",
             selectedEffort: "Max",
-            isInspectorVisible: false
+            isInspectorVisible: false,
+            layout: layout
         )
 
         WorkbenchShellStateStore.save(initial, defaults: defaults)
@@ -25,9 +32,48 @@ struct OpenSlopShellStateProbe {
         print("restored_effort=\(restored.selectedEffort)")
         print("restored_session=\(restored.selectedSessionID ?? "nil")")
         print("restored_inspector=\(restored.isInspectorVisible)")
+        print("restored_window=\(Int(restored.layout.windowWidth))x\(Int(restored.layout.windowHeight))")
+        print("restored_sidebar=\(Int(restored.layout.sidebarWidth))")
+        print("restored_inspector_width=\(Int(restored.layout.inspectorWidth))")
 
         guard restored == initial else {
             fail("restored state does not match persisted shell state.")
+        }
+
+        let unsafe = WorkbenchShellState(
+            selectedSessionID: "session-2",
+            selectedProvider: "Claude",
+            selectedEffort: "Max",
+            isInspectorVisible: false,
+            layout: WorkbenchShellLayoutGeometry(
+                windowWidth: 5000,
+                windowHeight: 400,
+                sidebarWidth: 99,
+                inspectorWidth: 999
+            )
+        )
+        WorkbenchShellStateStore.save(unsafe, defaults: defaults)
+        let sanitized = WorkbenchShellStateStore.load(defaults: defaults)
+        print("sanitized_window=\(Int(sanitized.layout.windowWidth))x\(Int(sanitized.layout.windowHeight))")
+        print("sanitized_sidebar=\(Int(sanitized.layout.sidebarWidth))")
+        print("sanitized_inspector_width=\(Int(sanitized.layout.inspectorWidth))")
+
+        guard sanitized.layout == WorkbenchShellLayoutGeometry(
+            windowWidth: WorkbenchShellLayoutGeometry.windowWidthRange.upperBound,
+            windowHeight: WorkbenchShellLayoutGeometry.windowHeightRange.lowerBound,
+            sidebarWidth: WorkbenchShellLayoutGeometry.sidebarWidthRange.lowerBound,
+            inspectorWidth: WorkbenchShellLayoutGeometry.inspectorWidthRange.upperBound
+        ) else {
+            fail("layout geometry was not sanitized to safe shell bounds.")
+        }
+
+        let legacyJSON = #"{"selectedSessionID":"legacy-session","selectedProvider":"Codex","selectedEffort":"High","isInspectorVisible":true}"#
+        defaults.set(Data(legacyJSON.utf8), forKey: WorkbenchShellStateStore.storageKey)
+        let legacyRestored = WorkbenchShellStateStore.load(defaults: defaults)
+        print("legacy_layout=\(Int(legacyRestored.layout.windowWidth))x\(Int(legacyRestored.layout.windowHeight));sidebar=\(Int(legacyRestored.layout.sidebarWidth));inspector=\(Int(legacyRestored.layout.inspectorWidth))")
+
+        guard legacyRestored.layout == .default else {
+            fail("legacy shell state without layout did not load with default geometry.")
         }
 
         let available = ["session-1", "session-2", "019dbb-shell-live-1", "019dbb-shell-live-2"]
@@ -70,7 +116,7 @@ struct OpenSlopShellStateProbe {
     }
 
     private static func looksLikeLiveCodexThread(_ value: String) -> Bool {
-        value.count == 36 && value.filter({ $0 == "-" }).count >= 4
+        value.count == 36 && value.filter { $0 == "-" }.count >= 4
     }
 
     private static func fail(_ message: String) -> Never {

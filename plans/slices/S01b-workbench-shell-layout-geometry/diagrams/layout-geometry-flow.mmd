@@ -1,0 +1,10 @@
+flowchart LR
+    UserResize[User resizes window or split] --> Observe[SwiftUI/AppKit observed geometry]
+    Observe --> Sanitize[Clamp and sanitize]
+    Sanitize --> ShellState[WorkbenchShellState.layout]
+    ShellState --> Store[UserDefaults shell-state v1]
+    Store --> Relaunch[App relaunch]
+    Relaunch --> DefaultSize[Window.defaultSize]
+    Relaunch --> SplitPrefs[Sidebar and inspector preferred widths]
+    DefaultSize --> UserResize
+    SplitPrefs --> UserResize

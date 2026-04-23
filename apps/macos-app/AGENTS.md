@@ -24,6 +24,7 @@ macos-app
    │  ├─ OpenSlopApp.swift
    │  ├─ WorkbenchSeed.swift
    │  ├─ WorkbenchRootView.swift
+   │  ├─ WorkbenchLayoutGeometryBridge.swift
    │  ├─ ApprovalSheetView.swift
    │  ├─ MonospacedTailBlockView.swift
    │  ├─ CommandExecControlPaneView.swift
@@ -96,3 +97,6 @@ macos-app
 - `WorkbenchSeed` для live terminal command item держит timeline компактнее: вместо полного dump показывает bounded tail preview и отсылает к Inspector.
 - `OpenSlopTerminalTailProbe` доказывает deterministic clipping на synthetic terminal transcript и сохраняет последние строки без порчи маленького вывода.
 - Важная граница остаётся честной: resize mode теперь materialized в inspector только как fixed proof surface. Он не превращён в arbitrary terminal UI и не пробивает transcript contour.
+
+- `WorkbenchLayoutGeometryBridge.swift` держит узкий AppKit/SwiftUI мост для observed shell geometry. Он остаётся только native layout persistence.
+- `OpenSlopShellStateProbe` доказывает shell layout geometry save/load/sanitize и legacy default restore.

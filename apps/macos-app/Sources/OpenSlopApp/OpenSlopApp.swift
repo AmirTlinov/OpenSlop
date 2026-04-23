@@ -1,12 +1,21 @@
 import SwiftUI
+import WorkbenchCore
 
 @main
 struct OpenSlopApp: App {
+    private let initialShellState = WorkbenchShellStateStore.load()
+
     var body: some Scene {
         WindowGroup("OpenSlop") {
-            WorkbenchRootView()
-                .frame(minWidth: 1280, minHeight: 820)
+            WorkbenchRootView(initialShellState: initialShellState)
+                .frame(
+                    minWidth: CGFloat(WorkbenchShellLayoutGeometry.windowWidthRange.lowerBound),
+                    minHeight: CGFloat(WorkbenchShellLayoutGeometry.windowHeightRange.lowerBound)
+                )
         }
-        .defaultSize(width: 1440, height: 900)
+        .defaultSize(
+            width: CGFloat(initialShellState.layout.windowWidth),
+            height: CGFloat(initialShellState.layout.windowHeight)
+        )
     }
 }

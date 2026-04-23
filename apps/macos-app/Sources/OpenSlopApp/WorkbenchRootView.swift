@@ -13,9 +13,9 @@ private enum SessionProjectionLoadState {
             return "Projection ещё не загружена."
         case .loading:
             return "Загружаем session list через long-lived stdio transport."
-        case .loaded(let kind, let transport):
+        case let .loaded(kind, transport):
             return "Daemon вернул projection kind=\(kind) через \(transport)."
-        case .failed(let message):
+        case let .failed(message):
             return message
         }
     }
@@ -33,9 +33,9 @@ private enum CodexBootstrapState {
             return "Codex thread ещё не запускали из GUI."
         case .running:
             return "core-daemon поднимает codex app-server и стартует real thread."
-        case .completed(let summary):
+        case let .completed(summary):
             return summary
-        case .failed(let message):
+        case let .failed(message):
             return message
         }
     }
@@ -57,17 +57,17 @@ private enum TranscriptState {
             return "Transcript ещё не загружен."
         case .loading:
             return "Читаем transcript snapshot из core-daemon."
-        case .loaded(let summary):
+        case let .loaded(summary):
             return summary
-        case .streaming(let summary):
+        case let .streaming(summary):
             return summary
-        case .awaitingApproval(let summary):
+        case let .awaitingApproval(summary):
             return summary
         case .submitting:
             return "Запускаем live turn и ждём первые streaming snapshot’ы."
-        case .unavailable(let message):
+        case let .unavailable(message):
             return message
-        case .failed(let message):
+        case let .failed(message):
             return message
         }
     }
@@ -94,8 +94,8 @@ struct WorkbenchRootView: View {
     @State private var commandExecAllowsMoreControls = false
     @State private var commandExecResizeSent = false
 
-    init() {
-        _shellState = State(initialValue: WorkbenchShellStateStore.load())
+    init(initialShellState: WorkbenchShellState = WorkbenchShellStateStore.load()) {
+        _shellState = State(initialValue: initialShellState.sanitized())
     }
 
     private var selectedSession: DaemonSessionSummary? {
@@ -103,7 +103,7 @@ struct WorkbenchRootView: View {
     }
 
     private var projectionKind: String {
-        if case .loaded(let kind, _) = loadState {
+        if case let .loaded(kind, _) = loadState {
             return kind
         }
         return "session_list.pending"
@@ -212,6 +212,12 @@ struct WorkbenchRootView: View {
                 selectedSessionID: $shellState.selectedSessionID,
                 loadSummary: loadState.summary
             )
+            .navigationSplitViewColumnWidth(
+                min: CGFloat(WorkbenchShellLayoutGeometry.sidebarWidthRange.lowerBound),
+                ideal: CGFloat(shellState.layout.sidebarWidth),
+                max: CGFloat(WorkbenchShellLayoutGeometry.sidebarWidthRange.upperBound)
+            )
+            .onWorkbenchLayoutWidthChange(recordSidebarWidth)
         } detail: {
             VStack(spacing: 0) {
                 HSplitView {
@@ -257,7 +263,12 @@ struct WorkbenchRootView: View {
                             isCommandExecCloseStdinDisabled: !canCloseCommandExecStdin,
                             isCommandExecTerminateDisabled: !canTerminateCommandExec
                         )
-                        .frame(minWidth: 280, idealWidth: 320, maxWidth: 360)
+                        .frame(
+                            minWidth: CGFloat(WorkbenchShellLayoutGeometry.inspectorWidthRange.lowerBound),
+                            idealWidth: CGFloat(shellState.layout.inspectorWidth),
+                            maxWidth: CGFloat(WorkbenchShellLayoutGeometry.inspectorWidthRange.upperBound)
+                        )
+                        .onWorkbenchLayoutWidthChange(recordInspectorWidth)
                     }
                 }
 
@@ -298,6 +309,9 @@ struct WorkbenchRootView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .background {
+            WorkbenchWindowSizeObserver(onContentSizeChange: recordWindowContentSize)
+        }
         .task {
             await loadSessions(force: false, preferredSessionID: nil)
         }
@@ -325,6 +339,65 @@ struct WorkbenchRootView: View {
             )
             .interactiveDismissDisabled(true)
         }
+    }
+
+    @MainActor
+    private func recordWindowContentSize(_ size: CGSize) {
+        recordLayoutGeometry(
+            windowWidth: Double(size.width),
+            windowHeight: Double(size.height)
+        )
+    }
+
+    @MainActor
+    private func recordSidebarWidth(_ width: CGFloat) {
+        recordLayoutGeometry(sidebarWidth: Double(width))
+    }
+
+    @MainActor
+    private func recordInspectorWidth(_ width: CGFloat) {
+        recordLayoutGeometry(inspectorWidth: Double(width))
+    }
+
+    @MainActor
+    private func recordLayoutGeometry(
+        windowWidth: Double? = nil,
+        windowHeight: Double? = nil,
+        sidebarWidth: Double? = nil,
+        inspectorWidth: Double? = nil
+    ) {
+        var layout = shellState.layout
+
+        if let windowWidth = normalizedLayoutDimension(windowWidth) {
+            layout.windowWidth = windowWidth
+        }
+
+        if let windowHeight = normalizedLayoutDimension(windowHeight) {
+            layout.windowHeight = windowHeight
+        }
+
+        if let sidebarWidth = normalizedLayoutDimension(sidebarWidth) {
+            layout.sidebarWidth = sidebarWidth
+        }
+
+        if let inspectorWidth = normalizedLayoutDimension(inspectorWidth) {
+            layout.inspectorWidth = inspectorWidth
+        }
+
+        let sanitizedLayout = layout.sanitized()
+        guard sanitizedLayout != shellState.layout else {
+            return
+        }
+
+        shellState.layout = sanitizedLayout
+    }
+
+    private func normalizedLayoutDimension(_ value: Double?) -> Double? {
+        guard let value, value.isFinite, value > 0 else {
+            return nil
+        }
+
+        return value.rounded(.toNearestOrAwayFromZero)
     }
 
     @MainActor
@@ -494,9 +567,9 @@ struct WorkbenchRootView: View {
 
                 await MainActor.run {
                     if let commandExecSurface {
-                            self.commandExecSurface = DaemonCodexCommandExecControlSurfaceProjector.recordOutput(
-                                outputEvent,
-                                nextStage: .running,
+                        self.commandExecSurface = DaemonCodexCommandExecControlSurfaceProjector.recordOutput(
+                            outputEvent,
+                            nextStage: .running,
                             to: commandExecSurface
                         )
                     }
@@ -679,7 +752,7 @@ struct WorkbenchRootView: View {
     }
 
     private func looksLikeLiveCodexThread(_ value: String) -> Bool {
-        value.count == 36 && value.filter({ $0 == "-" }).count >= 4
+        value.count == 36 && value.filter { $0 == "-" }.count >= 4
     }
 
     private func transcriptSummary(for snapshot: DaemonCodexTranscript) -> String {

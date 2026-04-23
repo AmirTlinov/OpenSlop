@@ -1,7 +1,7 @@
 # TASKS
 
 - [ ] Развернуть window grammar из `DESIGN.md`.
-- [ ] Сделать persistent layout state.
-- [ ] Добавить toolbar и keyboard-first routing.
+- [x] Сделать persistent layout state.
+- [x] Добавить toolbar и keyboard-first routing.
 - [ ] Подготовить first-class empty/loading/error states.
-- [ ] Снять reference images для окна.
+- [x] Снять reference images для окна.
