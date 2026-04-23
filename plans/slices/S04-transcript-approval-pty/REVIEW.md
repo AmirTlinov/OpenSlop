@@ -13,17 +13,14 @@
 
 ## Current posture
 
-S04 пока не закрыт целиком. В этом коммите закрыт следующий proof target: `daemon-owned native approval lane` поверх уже существующего streaming transcript path.
+S04 пока не закрыт целиком. В этом коммите закрыт следующий proof target: typed `commandExecution` transcript surface поверх уже существующего streaming + native approval path.
 
 ## Local evidence
 
 - `cargo test -p provider-domain` -> PASS
-- `cargo test -p session-domain` -> PASS
 - `cargo test -p core-daemon` -> PASS
 - `cargo build -p core-daemon` -> PASS
-- `swift build --package-path apps/macos-app --product OpenSlopApp` -> PASS
-- `swift build --package-path apps/macos-app --product OpenSlopTurnProbe` -> PASS
-- `swift build --package-path apps/macos-app --product OpenSlopApprovalProbe` -> PASS
+- `swift build --package-path apps/macos-app` -> PASS
 - `swift run --package-path apps/macos-app OpenSlopTurnProbe` -> PASS
 - `swift run --package-path apps/macos-app OpenSlopApprovalProbe` -> PASS
 - `make smoke-codex-turn` -> PASS
@@ -34,6 +31,8 @@ S04 пока не закрыт целиком. В этом коммите зак
 - `.agents/task_framer/s04-live-turn-resume/PREFLIGHT.md`
 - `.agents/task_framer/s04-streaming-transcript/PREFLIGHT.md`
 - `.agents/task_framer/s04-native-approvals/PREFLIGHT.md`
+- `.agents/task_framer/next-slice-after-s04/preflight.md`
+- `.agents/task_framer/s04-next-slice/PREFLIGHT.md`
 - `domains/provider/rust/provider-domain/src/lib.rs`
 - `domains/provider/contracts/codex-app-server/v0.123.0/*`
 - `services/core-daemon/src/main.rs`
@@ -101,6 +100,24 @@ What is proven:
 - GUI показывает native approval sheet и возвращает решение через `codex-resolve-approval`;
 - bounded slice merge-ready по функциональной линии, без притворства что закрыт весь S04.
 
+### Typed command surface reviewer pass
+Reviewer: `Kepler the 13th` (`reviewer`, 2026-04-23)
+
+Verdict: PASS
+
+Blocking findings:
+- none для текущего bounded scope.
+
+Non-blocking findings:
+- visual proof остаётся semantic-only без screenshot baseline;
+- до усиления probe живой fail-closed proof для `processId` и `exitCode` был слабее acceptance. После reviewer pass probe усилен и теперь валится, если эти поля исчезнут.
+
+What is proven:
+- provider больше не схлопывает `commandExecution` в generic tool и накладывает live overlay поверх successive snapshot contour;
+- Swift transcript mirror принимает `command`, `processId`, `exitCode`, а timeline рисует command отдельно от assistant prose;
+- scope не уехал в PTY: runtime слушает только `item/started`, `item/completed`, `item/commandExecution/outputDelta`, `item/fileChange/outputDelta`, без `command/exec/*` и без terminal pane;
+- живой `OpenSlopApprovalProbe` подтверждает `transcript_contains_command=true`, `transcript_has_process_id=true`, `transcript_has_exit_code=true`, `contains_done=true`, `final_turn=completed`.
+
 ## Closure note
 
-Следующий честный runtime шаг уже отдельно: PTY, richer command output surface и virtualization. Этот коммит их не симулирует.
+Следующий честный runtime шаг уже отдельно: PTY и virtualization. Этот коммит не симулирует terminal interaction, stdin/write/resize/kill и отдельный terminal pane.

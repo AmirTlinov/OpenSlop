@@ -46,8 +46,16 @@ struct TimelinePanelView: View {
                             Text(item.title)
                                 .font(.headline)
                             Text(item.detail)
-                                .font(.body)
+                                .font(item.prefersMonospacedDetail ? .body.monospaced() : .body)
                                 .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+
+                            if let secondaryDetail = item.secondaryDetail, !secondaryDetail.isEmpty {
+                                Text(secondaryDetail)
+                                    .font(item.prefersMonospacedDetail ? .footnote.monospaced() : .footnote)
+                                    .foregroundStyle(.tertiary)
+                                    .textSelection(.enabled)
+                            }
                         }
                         .padding(16)
                         .frame(maxWidth: .infinity, alignment: .leading)

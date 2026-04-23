@@ -9,4 +9,6 @@
 - [x] Протянуть server-initiated approval request lane из `codex app-server` в provider/core-daemon/SwiftUI.
 - [x] Сделать minimal native approval sheet с `Разрешить` / `Отклонить`.
 - [x] Добавить live approval proof для `commandExecution/requestApproval`.
+- [x] Перестать терять typed `commandExecution` и minimal `fileChange` activity внутри streaming transcript path.
+- [x] Протянуть `command`, optional `processId`, optional `exitCode` и command output до GUI как отдельную timeline surface.
 - [x] Обновить slice docs, AGENTS карты и pinned schema subset.

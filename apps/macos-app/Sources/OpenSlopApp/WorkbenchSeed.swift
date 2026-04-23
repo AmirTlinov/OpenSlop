@@ -5,6 +5,8 @@ struct TimelineItemSeed: Identifiable, Hashable {
     enum Kind: String {
         case user = "User"
         case agent = "Agent"
+        case command = "Command"
+        case fileChange = "Files"
         case tool = "Tool"
         case verify = "Verify"
     }
@@ -13,6 +15,8 @@ struct TimelineItemSeed: Identifiable, Hashable {
     let kind: Kind
     let title: String
     let detail: String
+    let secondaryDetail: String?
+    let prefersMonospacedDetail: Bool
 }
 
 struct InspectorCardSeed: Identifiable, Hashable {
@@ -37,7 +41,9 @@ struct WorkbenchSeed {
                     id: "approval-\(pendingApproval.approvalId)",
                     kind: .tool,
                     title: approvalTitle(for: pendingApproval),
-                    detail: approvalDetail(for: pendingApproval)
+                    detail: approvalDetail(for: pendingApproval),
+                    secondaryDetail: nil,
+                    prefersMonospacedDetail: true
                 ),
             ] + timeline(
                 for: session,
@@ -54,7 +60,9 @@ struct WorkbenchSeed {
                     id: item.id,
                     kind: timelineKind(for: item.kind),
                     title: item.title,
-                    detail: item.text.isEmpty ? item.turnStatus : item.text
+                    detail: timelineDetail(for: item),
+                    secondaryDetail: timelineSecondaryDetail(for: item),
+                    prefersMonospacedDetail: prefersMonospacedDetail(for: item)
                 )
             }
         }
@@ -64,19 +72,25 @@ struct WorkbenchSeed {
                 id: "projection",
                 kind: .agent,
                 title: "Session projection loaded from daemon",
-                detail: loadSummary
+                detail: loadSummary,
+                secondaryDetail: nil,
+                prefersMonospacedDetail: false
             ),
             TimelineItemSeed(
                 id: "transcript",
                 kind: .tool,
                 title: "Read-only transcript lane",
-                detail: transcriptSummary
+                detail: transcriptSummary,
+                secondaryDetail: nil,
+                prefersMonospacedDetail: false
             ),
             TimelineItemSeed(
                 id: "proof-target",
                 kind: .verify,
                 title: "S04 first proof target",
-                detail: session.map { "Выбрана session: \($0.title) [\($0.provider)]" } ?? "Ожидаем или не можем получить session list."
+                detail: session.map { "Выбрана session: \($0.title) [\($0.provider)]" } ?? "Ожидаем или не можем получить session list.",
+                secondaryDetail: nil,
+                prefersMonospacedDetail: false
             ),
         ]
     }
@@ -117,10 +131,63 @@ struct WorkbenchSeed {
             return .user
         case "agent":
             return .agent
+        case "command":
+            return .command
+        case "fileChange":
+            return .fileChange
         case "tool":
             return .tool
         default:
             return .verify
+        }
+    }
+
+    private func timelineDetail(for item: DaemonCodexTranscriptItem) -> String {
+        switch item.kind {
+        case "command":
+            return item.command ?? "Команда ещё materializing."
+        case "fileChange":
+            return item.text.isEmpty ? "Изменения файлов ещё materializing." : item.text
+        default:
+            return item.text.isEmpty ? item.turnStatus : item.text
+        }
+    }
+
+    private func timelineSecondaryDetail(for item: DaemonCodexTranscriptItem) -> String? {
+        switch item.kind {
+        case "command":
+            var sections: [String] = []
+            var meta: [String] = []
+
+            if let processId = item.processId, !processId.isEmpty {
+                meta.append("PTY \(processId)")
+            }
+
+            if let exitCode = item.exitCode {
+                meta.append("exit \(exitCode)")
+            }
+
+            if !meta.isEmpty {
+                sections.append(meta.joined(separator: " · "))
+            }
+
+            let output = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !output.isEmpty {
+                sections.append(output)
+            }
+
+            return sections.isEmpty ? nil : sections.joined(separator: "\n\n")
+        default:
+            return nil
+        }
+    }
+
+    private func prefersMonospacedDetail(for item: DaemonCodexTranscriptItem) -> Bool {
+        switch item.kind {
+        case "command", "fileChange":
+            return true
+        default:
+            return false
         }
     }
 

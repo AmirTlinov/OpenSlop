@@ -17,6 +17,9 @@ public struct DaemonCodexTranscriptItem: Codable, Equatable, Identifiable, Senda
     public let title: String
     public let text: String
     public let turnStatus: String
+    public let command: String?
+    public let processId: String?
+    public let exitCode: Int?
 }
 
 public struct DaemonCodexTranscriptStreamEvent: Codable, Equatable, Sendable {

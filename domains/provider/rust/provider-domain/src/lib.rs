@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -77,6 +78,9 @@ pub struct CodexTranscriptEntry {
     pub title: String,
     pub text: String,
     pub turn_status: String,
+    pub command: Option<String>,
+    pub process_id: Option<String>,
+    pub exit_code: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -501,6 +505,138 @@ struct CodexAppServerProcess {
 
 type ApprovalHandler<'a> =
     dyn FnMut(CodexApprovalRequest) -> Result<CodexApprovalDecision, CodexRuntimeError> + 'a;
+type NotificationHandler<'a> = dyn FnMut(&str, &Value) -> Result<(), CodexRuntimeError> + 'a;
+
+#[derive(Debug, Clone)]
+struct LiveToolActivity {
+    entry: CodexTranscriptEntry,
+    order: usize,
+}
+
+#[derive(Debug, Default)]
+struct LiveToolActivityOverlay {
+    entries: HashMap<String, LiveToolActivity>,
+    next_order: usize,
+}
+
+impl LiveToolActivityOverlay {
+    fn observe_notification(
+        &mut self,
+        method: &str,
+        message: &Value,
+    ) -> Result<(), CodexRuntimeError> {
+        let Some(params) = message.get("params") else {
+            return Ok(());
+        };
+
+        match parse_live_tool_notification(method, params)? {
+            Some(LiveToolNotification::SnapshotEntry(entry)) => self.upsert_entry(entry),
+            Some(LiveToolNotification::OutputDelta {
+                item_id,
+                turn_id,
+                kind,
+                delta,
+            }) => self.append_output(&item_id, &turn_id, kind, &delta),
+            None => {}
+        }
+
+        Ok(())
+    }
+
+    fn upsert_entry(&mut self, entry: CodexTranscriptEntry) {
+        if let Some(existing) = self.entries.get_mut(&entry.id) {
+            merge_transcript_entry(&mut existing.entry, &entry);
+            return;
+        }
+
+        let order = self.next_order;
+        self.next_order += 1;
+        self.entries
+            .insert(entry.id.clone(), LiveToolActivity { entry, order });
+    }
+
+    fn append_output(&mut self, item_id: &str, turn_id: &str, kind: &'static str, delta: &str) {
+        let activity = self.ensure_placeholder(item_id, turn_id, kind);
+        if delta.is_empty() {
+            return;
+        }
+
+        activity.entry.text.push_str(delta);
+    }
+
+    fn ensure_placeholder(
+        &mut self,
+        item_id: &str,
+        turn_id: &str,
+        kind: &'static str,
+    ) -> &mut LiveToolActivity {
+        if !self.entries.contains_key(item_id) {
+            let order = self.next_order;
+            self.next_order += 1;
+            let entry = match kind {
+                "command" => command_entry_placeholder(item_id, turn_id),
+                "fileChange" => file_change_entry_placeholder(item_id, turn_id),
+                _ => generic_live_tool_placeholder(item_id, turn_id, kind),
+            };
+            self.entries
+                .insert(item_id.to_string(), LiveToolActivity { entry, order });
+        }
+
+        self.entries
+            .get_mut(item_id)
+            .expect("placeholder must exist after insert")
+    }
+
+    fn merge_into_snapshot(&self, snapshot: &mut CodexTranscriptSnapshot) {
+        if self.entries.is_empty() {
+            return;
+        }
+
+        let turn_status_by_turn: HashMap<String, String> = snapshot
+            .items
+            .iter()
+            .map(|item| (item.turn_id.clone(), item.turn_status.clone()))
+            .collect();
+        let mut merged_ids = HashSet::new();
+
+        for item in snapshot.items.iter_mut() {
+            if let Some(activity) = self.entries.get(&item.id) {
+                let mut overlay_entry = activity.entry.clone();
+                if let Some(turn_status) = turn_status_by_turn.get(&overlay_entry.turn_id) {
+                    overlay_entry.turn_status = turn_status.clone();
+                }
+                merge_transcript_entry(item, &overlay_entry);
+                merged_ids.insert(item.id.clone());
+            }
+        }
+
+        let mut missing_entries: Vec<LiveToolActivity> = self
+            .entries
+            .values()
+            .filter(|activity| !merged_ids.contains(&activity.entry.id))
+            .cloned()
+            .collect();
+        missing_entries.sort_by_key(|activity| activity.order);
+
+        for activity in missing_entries {
+            let mut entry = activity.entry.clone();
+            if let Some(turn_status) = turn_status_by_turn.get(&entry.turn_id) {
+                entry.turn_status = turn_status.clone();
+            }
+            insert_overlay_item(snapshot, entry);
+        }
+    }
+}
+
+enum LiveToolNotification {
+    SnapshotEntry(CodexTranscriptEntry),
+    OutputDelta {
+        item_id: String,
+        turn_id: String,
+        kind: &'static str,
+        delta: String,
+    },
+}
 
 enum ServerApprovalRequest {
     CommandExecution { request: CodexApprovalRequest },
@@ -609,7 +745,7 @@ impl CodexAppServerProcess {
     }
 
     fn start_turn(&mut self, thread_id: &str, input_text: &str) -> Result<(), CodexRuntimeError> {
-        self.start_turn_with_options(thread_id, input_text, None, None)
+        self.start_turn_with_options(thread_id, input_text, None, None, None)
     }
 
     fn start_turn_with_options(
@@ -618,6 +754,7 @@ impl CodexAppServerProcess {
         input_text: &str,
         approval_policy: Option<&str>,
         approval_handler: Option<&mut ApprovalHandler<'_>>,
+        notification_handler: Option<&mut NotificationHandler<'_>>,
     ) -> Result<(), CodexRuntimeError> {
         let params = json!({
             "threadId": thread_id,
@@ -638,8 +775,14 @@ impl CodexAppServerProcess {
             });
         }
 
-        self.request_value(3, "turn/start", &params, approval_handler)
-            .map(|_| ())
+        self.request_value(
+            3,
+            "turn/start",
+            &params,
+            approval_handler,
+            notification_handler,
+        )
+        .map(|_| ())
     }
 
     fn resume_thread(&mut self, thread_id: &str) -> Result<(), CodexRuntimeError> {
@@ -647,7 +790,7 @@ impl CodexAppServerProcess {
             "threadId": thread_id
         });
 
-        match self.request_value(3, "thread/resume", &params, None) {
+        match self.request_value(3, "thread/resume", &params, None, None) {
             Ok(_) => Ok(()),
             Err(CodexRuntimeError::ServerError {
                 code: _, message, ..
@@ -664,13 +807,14 @@ impl CodexAppServerProcess {
         &mut self,
         thread_id: &str,
     ) -> Result<CodexTranscriptSnapshot, CodexRuntimeError> {
-        self.read_transcript_with_handler(thread_id, None)
+        self.read_transcript_with_handler(thread_id, None, None)
     }
 
     fn read_transcript_with_handler(
         &mut self,
         thread_id: &str,
         mut approval_handler: Option<&mut ApprovalHandler<'_>>,
+        mut notification_handler: Option<&mut NotificationHandler<'_>>,
     ) -> Result<CodexTranscriptSnapshot, CodexRuntimeError> {
         match self.read_transcript_value(
             thread_id,
@@ -678,6 +822,9 @@ impl CodexAppServerProcess {
             approval_handler
                 .as_mut()
                 .map(|handler| &mut **handler as &mut ApprovalHandler<'_>),
+            notification_handler
+                .as_mut()
+                .map(|handler| &mut **handler as &mut NotificationHandler<'_>),
         ) {
             Ok(value) => parse_transcript_snapshot(value),
             Err(CodexRuntimeError::ServerError { message, .. })
@@ -689,6 +836,9 @@ impl CodexAppServerProcess {
                     approval_handler
                         .as_mut()
                         .map(|handler| &mut **handler as &mut ApprovalHandler<'_>),
+                    notification_handler
+                        .as_mut()
+                        .map(|handler| &mut **handler as &mut NotificationHandler<'_>),
                 )?;
                 parse_transcript_snapshot(value)
             }
@@ -700,9 +850,15 @@ impl CodexAppServerProcess {
         &mut self,
         thread_id: &str,
     ) -> Result<CodexTranscriptSnapshot, CodexRuntimeError> {
-        self.poll_transcript_until_terminal(thread_id, TURN_POLL_INTERVAL, None, None, |_| {
-            Ok::<(), std::convert::Infallible>(())
-        })
+        self.poll_transcript_until_terminal(
+            thread_id,
+            TURN_POLL_INTERVAL,
+            None,
+            None,
+            None,
+            None,
+            |_| Ok::<(), std::convert::Infallible>(()),
+        )
     }
 
     fn read_transcript_value(
@@ -710,6 +866,7 @@ impl CodexAppServerProcess {
         thread_id: &str,
         include_turns: bool,
         approval_handler: Option<&mut ApprovalHandler<'_>>,
+        notification_handler: Option<&mut NotificationHandler<'_>>,
     ) -> Result<Value, CodexRuntimeError> {
         let mut params = json!({
             "threadId": thread_id
@@ -719,7 +876,13 @@ impl CodexAppServerProcess {
             params["includeTurns"] = Value::Bool(true);
         }
 
-        self.request_value(4, "thread/read", &params, approval_handler)
+        self.request_value(
+            4,
+            "thread/read",
+            &params,
+            approval_handler,
+            notification_handler,
+        )
     }
 
     fn stream_turn<F, E>(
@@ -733,12 +896,26 @@ impl CodexAppServerProcess {
         E: Display,
     {
         let baseline = self.read_transcript(thread_id).ok();
-        self.start_turn(thread_id, input_text)?;
+        let notification_overlay = RefCell::new(LiveToolActivityOverlay::default());
+        let mut notification_handler = |method: &str, message: &Value| {
+            notification_overlay
+                .borrow_mut()
+                .observe_notification(method, message)
+        };
+        self.start_turn_with_options(
+            thread_id,
+            input_text,
+            None,
+            None,
+            Some(&mut notification_handler),
+        )?;
         self.poll_transcript_until_terminal(
             thread_id,
             STREAM_POLL_INTERVAL,
             baseline,
             None,
+            Some(&mut notification_handler),
+            Some(&notification_overlay),
             on_snapshot,
         )
     }
@@ -757,22 +934,31 @@ impl CodexAppServerProcess {
         H: Display,
     {
         let baseline = self.read_transcript(thread_id).ok();
+        let notification_overlay = RefCell::new(LiveToolActivityOverlay::default());
         let mut approval_handler = |request: CodexApprovalRequest| {
             on_approval(request).map_err(|error| CodexRuntimeError::ApprovalCallbackFailed {
                 message: error.to_string(),
             })
+        };
+        let mut notification_handler = |method: &str, message: &Value| {
+            notification_overlay
+                .borrow_mut()
+                .observe_notification(method, message)
         };
         self.start_turn_with_options(
             thread_id,
             input_text,
             Some("untrusted"),
             Some(&mut approval_handler),
+            Some(&mut notification_handler),
         )?;
         self.poll_transcript_until_terminal(
             thread_id,
             STREAM_POLL_INTERVAL,
             baseline,
             Some(&mut approval_handler),
+            Some(&mut notification_handler),
+            Some(&notification_overlay),
             on_snapshot,
         )
     }
@@ -783,6 +969,8 @@ impl CodexAppServerProcess {
         poll_interval: Duration,
         mut last_snapshot: Option<CodexTranscriptSnapshot>,
         mut approval_handler: Option<&mut ApprovalHandler<'_>>,
+        mut notification_handler: Option<&mut NotificationHandler<'_>>,
+        notification_overlay: Option<&RefCell<LiveToolActivityOverlay>>,
         mut on_snapshot: F,
     ) -> Result<CodexTranscriptSnapshot, CodexRuntimeError>
     where
@@ -799,8 +987,15 @@ impl CodexAppServerProcess {
                 });
             }
 
-            match self.read_transcript_with_handler(thread_id, approval_handler.as_deref_mut()) {
-                Ok(snapshot) => {
+            match self.read_transcript_with_handler(
+                thread_id,
+                approval_handler.as_deref_mut(),
+                notification_handler.as_deref_mut(),
+            ) {
+                Ok(mut snapshot) => {
+                    if let Some(overlay) = notification_overlay {
+                        overlay.borrow().merge_into_snapshot(&mut snapshot);
+                    }
                     let changed = last_snapshot.as_ref() != Some(&snapshot);
                     if changed {
                         on_snapshot(snapshot.clone()).map_err(|error| {
@@ -837,7 +1032,7 @@ impl CodexAppServerProcess {
         P: Serialize,
         R: for<'de> Deserialize<'de>,
     {
-        let value = self.request_value(id, method, params, None)?;
+        let value = self.request_value(id, method, params, None, None)?;
         serde_json::from_value(value).map_err(CodexRuntimeError::Json)
     }
 
@@ -847,6 +1042,7 @@ impl CodexAppServerProcess {
         method: &str,
         params: &P,
         mut approval_handler: Option<&mut ApprovalHandler<'_>>,
+        mut notification_handler: Option<&mut NotificationHandler<'_>>,
     ) -> Result<Value, CodexRuntimeError>
     where
         P: Serialize,
@@ -900,6 +1096,11 @@ impl CodexAppServerProcess {
                     let response_value = server_request.response_value(decision);
                     self.respond_to_server_request(response_id, response_value)?;
                     deadline = Instant::now() + TURN_COMPLETION_TIMEOUT;
+                    continue;
+                }
+
+                if let Some(notification_handler) = notification_handler.as_deref_mut() {
+                    notification_handler(server_method, &message)?;
                 }
                 continue;
             }
@@ -1148,6 +1349,9 @@ fn parse_transcript_item(item: &Value, turn_id: &str, turn_status: &str) -> Code
             title: "User prompt".to_string(),
             text: extract_user_message_text(item),
             turn_status: turn_status.to_string(),
+            command: None,
+            process_id: None,
+            exit_code: None,
         },
         "agentMessage" => CodexTranscriptEntry {
             id: item_id,
@@ -1164,7 +1368,12 @@ fn parse_transcript_item(item: &Value, turn_id: &str, turn_status: &str) -> Code
                 .unwrap_or("")
                 .to_string(),
             turn_status: turn_status.to_string(),
+            command: None,
+            process_id: None,
+            exit_code: None,
         },
+        "commandExecution" => parse_command_execution_entry(item, &item_id, turn_id, turn_status),
+        "fileChange" => parse_file_change_entry(item, &item_id, turn_id, turn_status),
         other => CodexTranscriptEntry {
             id: item_id,
             turn_id: turn_id.to_string(),
@@ -1172,7 +1381,276 @@ fn parse_transcript_item(item: &Value, turn_id: &str, turn_status: &str) -> Code
             title: format!("Tool activity · {other}"),
             text: extract_generic_item_text(item).unwrap_or_else(|| other.to_string()),
             turn_status: turn_status.to_string(),
+            command: None,
+            process_id: None,
+            exit_code: None,
         },
+    }
+}
+
+fn parse_command_execution_entry(
+    item: &Value,
+    item_id: &str,
+    turn_id: &str,
+    turn_status: &str,
+) -> CodexTranscriptEntry {
+    let command = item
+        .get("command")
+        .and_then(|value| value.as_str())
+        .map(ToString::to_string);
+    let command_status = item
+        .get("status")
+        .and_then(|value| value.as_str())
+        .unwrap_or("unknown");
+    let aggregated_output = item
+        .get("aggregatedOutput")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    let process_id = item
+        .get("processId")
+        .and_then(|value| value.as_str())
+        .map(ToString::to_string);
+    let exit_code = item
+        .get("exitCode")
+        .and_then(|value| value.as_i64())
+        .and_then(|value| i32::try_from(value).ok());
+
+    CodexTranscriptEntry {
+        id: item_id.to_string(),
+        turn_id: turn_id.to_string(),
+        kind: "command".to_string(),
+        title: command_entry_title(command_status),
+        text: format_command_entry_text(aggregated_output),
+        turn_status: turn_status.to_string(),
+        command,
+        process_id,
+        exit_code,
+    }
+}
+
+fn parse_file_change_entry(
+    item: &Value,
+    item_id: &str,
+    turn_id: &str,
+    turn_status: &str,
+) -> CodexTranscriptEntry {
+    let file_change_status = item
+        .get("status")
+        .and_then(|value| value.as_str())
+        .unwrap_or("unknown");
+
+    CodexTranscriptEntry {
+        id: item_id.to_string(),
+        turn_id: turn_id.to_string(),
+        kind: "fileChange".to_string(),
+        title: file_change_entry_title(file_change_status),
+        text: format_file_change_text(item.get("changes")),
+        turn_status: turn_status.to_string(),
+        command: None,
+        process_id: None,
+        exit_code: None,
+    }
+}
+
+fn command_entry_title(status: &str) -> String {
+    match status {
+        "inProgress" => "Command running".to_string(),
+        "completed" => "Command completed".to_string(),
+        "failed" => "Command failed".to_string(),
+        "declined" => "Command declined".to_string(),
+        _ => "Command activity".to_string(),
+    }
+}
+
+fn file_change_entry_title(status: &str) -> String {
+    match status {
+        "inProgress" => "File change running".to_string(),
+        "completed" => "File change completed".to_string(),
+        "failed" => "File change failed".to_string(),
+        "declined" => "File change declined".to_string(),
+        _ => "File change activity".to_string(),
+    }
+}
+
+fn format_command_entry_text(aggregated_output: &str) -> String {
+    aggregated_output.to_string()
+}
+
+fn format_file_change_text(changes: Option<&Value>) -> String {
+    changes
+        .and_then(|value| value.as_array())
+        .map(|changes| {
+            changes
+                .iter()
+                .filter_map(|change| {
+                    let path = change.get("path").and_then(|value| value.as_str())?;
+                    let kind = change
+                        .get("kind")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("change");
+                    Some(format!("{kind} {path}"))
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default()
+}
+
+fn parse_live_tool_notification(
+    method: &str,
+    params: &Value,
+) -> Result<Option<LiveToolNotification>, CodexRuntimeError> {
+    match method {
+        "item/started" | "item/completed" => {
+            let item = params
+                .get("item")
+                .ok_or_else(|| CodexRuntimeError::InvalidResponse {
+                    method: method.to_string(),
+                    message: params.to_string(),
+                })?;
+            let turn_id = params
+                .get("turnId")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| CodexRuntimeError::InvalidResponse {
+                    method: method.to_string(),
+                    message: params.to_string(),
+                })?;
+            Ok(parse_live_tool_entry(item, turn_id).map(LiveToolNotification::SnapshotEntry))
+        }
+        "item/commandExecution/outputDelta" => Ok(Some(LiveToolNotification::OutputDelta {
+            item_id: params_string(params, "itemId", method)?,
+            turn_id: params_string(params, "turnId", method)?,
+            kind: "command",
+            delta: params_string(params, "delta", method)?,
+        })),
+        "item/fileChange/outputDelta" => Ok(Some(LiveToolNotification::OutputDelta {
+            item_id: params_string(params, "itemId", method)?,
+            turn_id: params_string(params, "turnId", method)?,
+            kind: "fileChange",
+            delta: params_string(params, "delta", method)?,
+        })),
+        _ => Ok(None),
+    }
+}
+
+fn parse_live_tool_entry(item: &Value, turn_id: &str) -> Option<CodexTranscriptEntry> {
+    let item_id = item
+        .get("id")
+        .and_then(|value| value.as_str())
+        .unwrap_or("item-unknown");
+    let item_status = item
+        .get("status")
+        .and_then(|value| value.as_str())
+        .unwrap_or("inProgress");
+
+    match item.get("type").and_then(|value| value.as_str()) {
+        Some("commandExecution") => Some(parse_command_execution_entry(
+            item,
+            item_id,
+            turn_id,
+            item_status,
+        )),
+        Some("fileChange") => Some(parse_file_change_entry(item, item_id, turn_id, item_status)),
+        _ => None,
+    }
+}
+
+fn params_string(params: &Value, key: &str, method: &str) -> Result<String, CodexRuntimeError> {
+    params
+        .get(key)
+        .and_then(|value| value.as_str())
+        .map(ToString::to_string)
+        .ok_or_else(|| CodexRuntimeError::InvalidResponse {
+            method: method.to_string(),
+            message: format!("missing params field {key}: {params}"),
+        })
+}
+
+fn merge_transcript_entry(target: &mut CodexTranscriptEntry, incoming: &CodexTranscriptEntry) {
+    target.kind = incoming.kind.clone();
+    target.title = incoming.title.clone();
+
+    if target.text.is_empty() || incoming.text.len() >= target.text.len() {
+        target.text = incoming.text.clone();
+    }
+
+    if incoming.command.is_some() {
+        target.command = incoming.command.clone();
+    }
+    if incoming.process_id.is_some() {
+        target.process_id = incoming.process_id.clone();
+    }
+    if incoming.exit_code.is_some() {
+        target.exit_code = incoming.exit_code;
+    }
+
+    if target.turn_status.is_empty() || is_terminal_status(Some(&incoming.turn_status)) {
+        target.turn_status = incoming.turn_status.clone();
+    }
+}
+
+fn insert_overlay_item(snapshot: &mut CodexTranscriptSnapshot, entry: CodexTranscriptEntry) {
+    let turn_id = entry.turn_id.clone();
+    let insert_index = snapshot
+        .items
+        .iter()
+        .enumerate()
+        .rev()
+        .find(|(_, item)| item.turn_id == turn_id && item.kind == "agent")
+        .map(|(index, _)| index)
+        .or_else(|| {
+            snapshot
+                .items
+                .iter()
+                .enumerate()
+                .rev()
+                .find(|(_, item)| item.turn_id == turn_id)
+                .map(|(index, _)| index + 1)
+        })
+        .unwrap_or(snapshot.items.len());
+
+    snapshot.items.insert(insert_index, entry);
+}
+
+fn command_entry_placeholder(item_id: &str, turn_id: &str) -> CodexTranscriptEntry {
+    CodexTranscriptEntry {
+        id: item_id.to_string(),
+        turn_id: turn_id.to_string(),
+        kind: "command".to_string(),
+        title: "Command running".to_string(),
+        text: String::new(),
+        turn_status: "inProgress".to_string(),
+        command: None,
+        process_id: None,
+        exit_code: None,
+    }
+}
+
+fn file_change_entry_placeholder(item_id: &str, turn_id: &str) -> CodexTranscriptEntry {
+    CodexTranscriptEntry {
+        id: item_id.to_string(),
+        turn_id: turn_id.to_string(),
+        kind: "fileChange".to_string(),
+        title: "File change running".to_string(),
+        text: String::new(),
+        turn_status: "inProgress".to_string(),
+        command: None,
+        process_id: None,
+        exit_code: None,
+    }
+}
+
+fn generic_live_tool_placeholder(item_id: &str, turn_id: &str, kind: &str) -> CodexTranscriptEntry {
+    CodexTranscriptEntry {
+        id: item_id.to_string(),
+        turn_id: turn_id.to_string(),
+        kind: kind.to_string(),
+        title: "Tool activity".to_string(),
+        text: String::new(),
+        turn_status: "inProgress".to_string(),
+        command: None,
+        process_id: None,
+        exit_code: None,
     }
 }
 
@@ -1409,6 +1887,64 @@ mod tests {
     }
 
     #[test]
+    fn stream_turn_keeps_typed_command_surface_from_live_notifications() {
+        let repo = tempdir().expect("temp repo should exist");
+        let binary = write_stub_codex_binary_with_command_notifications(repo.path());
+        let mut registry = CodexRuntimeRegistry {
+            binary,
+            sessions: HashMap::new(),
+        };
+        let bootstrap = registry
+            .start_session(repo.path())
+            .expect("bootstrap should succeed");
+        let mut streamed = Vec::new();
+
+        let snapshot = registry
+            .stream_turn(
+                repo.path(),
+                &bootstrap.thread_id,
+                "RUN_COMMAND_PROBE",
+                |snapshot| {
+                    streamed.push(snapshot);
+                    Ok::<(), std::convert::Infallible>(())
+                },
+            )
+            .expect("streaming turn should complete");
+
+        let command_item = snapshot
+            .items
+            .iter()
+            .find(|item| item.kind == "command")
+            .expect("final snapshot should keep command item");
+
+        assert_eq!(
+            command_item.command.as_deref(),
+            Some("python3 -c \"print(123)\"")
+        );
+        assert_eq!(command_item.process_id.as_deref(), Some("pty-stub-123"));
+        assert_eq!(command_item.exit_code, Some(0));
+        assert!(command_item.text.contains("123"));
+        assert!(
+            streamed
+                .iter()
+                .any(|snapshot| snapshot.items.iter().any(|item| {
+                    item.kind == "command"
+                        && item
+                            .command
+                            .as_deref()
+                            .unwrap_or_default()
+                            .contains("python3 -c")
+                }))
+        );
+        assert!(
+            snapshot
+                .items
+                .iter()
+                .any(|item| { item.kind == "agent" && item.text.trim() == "DONE" })
+        );
+    }
+
+    #[test]
     fn parses_command_execution_approval_request() {
         let message = json!({
             "method": "item/commandExecution/requestApproval",
@@ -1489,6 +2025,18 @@ mod tests {
     }
 
     fn write_stub_codex_binary(repo_root: &Path, fail_thread_start: bool) -> PathBuf {
+        write_stub_codex_binary_mode(repo_root, fail_thread_start, false)
+    }
+
+    fn write_stub_codex_binary_with_command_notifications(repo_root: &Path) -> PathBuf {
+        write_stub_codex_binary_mode(repo_root, false, true)
+    }
+
+    fn write_stub_codex_binary_mode(
+        repo_root: &Path,
+        fail_thread_start: bool,
+        command_notifications: bool,
+    ) -> PathBuf {
         let path = repo_root.join("codex-stub.py");
         let script = r#"#!/usr/bin/env python3
 import json
@@ -1496,6 +2044,7 @@ import os
 import sys
 
 FAIL_THREAD_START = __FAIL_THREAD_START__
+COMMAND_NOTIFICATION_MODE = __COMMAND_NOTIFICATION_MODE__
 STATE_FILE = os.path.join(os.getcwd(), 'codex_stub_state.json')
 DEFAULT_STATE = {
     'thread_started': False,
@@ -1602,6 +2151,27 @@ if args[:3] == ['app-server', '--listen', 'stdio://']:
                 continue
             STATE['read_count'] += 1
             completed = STATE['read_count'] >= 2
+            wants_command_notifications = COMMAND_NOTIFICATION_MODE and 'RUN_COMMAND_PROBE' in STATE['prompt']
+            if wants_command_notifications and STATE['read_count'] == 1:
+                print(json.dumps({'method': 'item/started', 'params': {
+                    'threadId': STATE['thread_id'],
+                    'turnId': 'turn-stub-001',
+                    'item': {
+                        'type': 'commandExecution',
+                        'id': 'cmd-1',
+                        'command': 'python3 -c "print(123)"',
+                        'commandActions': [],
+                        'cwd': '/tmp/repo',
+                        'status': 'inProgress',
+                        'processId': 'pty-stub-123',
+                    }
+                }}), flush=True)
+                print(json.dumps({'method': 'item/commandExecution/outputDelta', 'params': {
+                    'threadId': STATE['thread_id'],
+                    'turnId': 'turn-stub-001',
+                    'itemId': 'cmd-1',
+                    'delta': '123\\n',
+                }}), flush=True)
             items = [
                 {
                     'type': 'userMessage',
@@ -1614,10 +2184,26 @@ if args[:3] == ['app-server', '--listen', 'stdio://']:
             STATE['completed'] = completed
             save_state(STATE)
             if completed:
+                if wants_command_notifications:
+                    print(json.dumps({'method': 'item/completed', 'params': {
+                        'threadId': STATE['thread_id'],
+                        'turnId': 'turn-stub-001',
+                        'item': {
+                            'type': 'commandExecution',
+                            'id': 'cmd-1',
+                            'command': 'python3 -c "print(123)"',
+                            'commandActions': [],
+                            'cwd': '/tmp/repo',
+                            'status': 'completed',
+                            'aggregatedOutput': '123\\n',
+                            'processId': 'pty-stub-123',
+                            'exitCode': 0,
+                        }
+                    }}), flush=True)
                 items.append({
                     'type': 'agentMessage',
                     'id': 'item-2',
-                    'text': 'OK',
+                    'text': 'DONE' if wants_command_notifications else 'OK',
                     'phase': 'final_answer',
                     'memoryCitation': None,
                 })
@@ -1656,7 +2242,12 @@ if args[:3] == ['app-server', '--listen', 'stdio://']:
 
 print('unsupported args', args, file=sys.stderr)
 raise SystemExit(1)
-"#.replace("__FAIL_THREAD_START__", if fail_thread_start { "True" } else { "False" });
+"#
+        .replace("__FAIL_THREAD_START__", if fail_thread_start { "True" } else { "False" })
+        .replace(
+            "__COMMAND_NOTIFICATION_MODE__",
+            if command_notifications { "True" } else { "False" },
+        );
         fs::write(&path, script).expect("stub script should write");
         let mut permissions = fs::metadata(&path)
             .expect("metadata should exist")

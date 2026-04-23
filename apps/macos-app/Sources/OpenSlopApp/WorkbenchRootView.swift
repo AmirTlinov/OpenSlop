@@ -324,8 +324,10 @@ struct WorkbenchRootView: View {
 
     private func transcriptSummary(for snapshot: DaemonCodexTranscript) -> String {
         let agentCount = snapshot.items.filter { $0.kind == "agent" }.count
+        let commandCount = snapshot.items.filter { $0.kind == "command" }.count
+        let fileChangeCount = snapshot.items.filter { $0.kind == "fileChange" }.count
         let toolCount = snapshot.items.filter { $0.kind == "tool" }.count
-        return "thread=\(snapshot.threadId) status=\(snapshot.threadStatus) turns=\(snapshot.turnCount) last=\(snapshot.lastTurnStatus ?? "—") agent=\(agentCount) tool=\(toolCount)"
+        return "thread=\(snapshot.threadId) status=\(snapshot.threadStatus) turns=\(snapshot.turnCount) last=\(snapshot.lastTurnStatus ?? "—") agent=\(agentCount) command=\(commandCount) files=\(fileChangeCount) tool=\(toolCount)"
     }
 
     @MainActor

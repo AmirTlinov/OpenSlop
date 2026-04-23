@@ -19,6 +19,7 @@ codex app-server generate-json-schema --out /tmp/openslop-codex-schema
 - `thread/resume` request/response;
 - `turn/start` request/response.
 - `ServerRequest` для server-initiated approval requests;
+- `ServerNotification` для live transcript overlay;
 - `CommandExecutionRequestApproval*`;
 - `FileChangeRequestApproval*`.
 
@@ -33,9 +34,15 @@ codex app-server generate-json-schema --out /tmp/openslop-codex-schema
 
 Важная S04-specific реальность:
 - approvals приходят server->client request'ами, не transcript-only surface;
+- typed command surface опирается на live notifications:
+  - `item/started`
+  - `item/completed`
+  - `item/commandExecution/outputDelta`
+  - `item/fileChange/outputDelta`
 - на этой машине default thread policy возвращает `sandbox.type = dangerFullAccess`, поэтому сам по себе `approvalPolicy = on-request` не поднимал approval для workspace edits;
 - для живого proof target текущий approval-enabled turn идёт через override:
   - `approvalPolicy = "untrusted"`
   - `approvalsReviewer = "user"`
   - `sandboxPolicy = { "type": "readOnly" }`
 - live proof для этого шага закреплён на `commandExecution/requestApproval` и показал real approval event для `python3 -c "print(123)"`.
+- `item/commandExecution/terminalInteraction` видно в schema, но этот sub-slice сознательно не объявляет его готовым PTY surface.
