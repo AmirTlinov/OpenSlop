@@ -32,104 +32,53 @@ struct WorkbenchStartSurfaceView: View {
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(.secondary)
 
-                Text(emptyState.title)
+                Text(surfaceTitle)
                     .font(.largeTitle.weight(.semibold))
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
 
-                Text(emptyState.detail)
+                Text(surfaceDetail)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 620)
             }
 
-            VStack(alignment: .leading, spacing: 0) {
-                TextField("Спросите агента о проекте, коде или проверке…", text: $promptText, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(.body)
-                    .lineLimit(3...6)
-                    .padding(.horizontal, 18)
-                    .padding(.top, 16)
-                    .padding(.bottom, 14)
-                    .onSubmit {
-                        if !isSubmitDisabled {
-                            onSubmit()
+            if selectedProvider == "Claude" {
+                claudeReceiptSurface
+            } else {
+                codexPromptSurface
+
+                VStack(spacing: 0) {
+                    ForEach(suggestions, id: \.self) { suggestion in
+                        Button {
+                            promptText = suggestion
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "arrow.turn.down.right")
+                                    .foregroundStyle(.secondary)
+                                Text(suggestion)
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                            }
+                            .padding(.vertical, 12)
+                        }
+                        .buttonStyle(.plain)
+
+                        if suggestion != suggestions.last {
+                            Divider()
                         }
                     }
-
-                Divider()
-
-                HStack(spacing: 12) {
-                    Label(workspaceTitle, systemImage: "folder")
-                    Label(branchTitle, systemImage: "point.3.connected.trianglepath.dotted")
-                    Spacer(minLength: 0)
-                    Menu {
-                        Text("Provider truth приходит из текущего shell state.")
-                    } label: {
-                        Label(selectedProvider, systemImage: selectedProvider == "Claude" ? "moon.stars" : "sparkles")
-                    }
-                    .menuStyle(.borderlessButton)
-
-                    Menu {
-                        Text("Effort пока shell-level preference.")
-                    } label: {
-                        Label(selectedEffort, systemImage: "slider.horizontal.3")
-                    }
-                    .menuStyle(.borderlessButton)
-
-                    Button(action: onSubmit) {
-                        Image(systemName: "arrow.up")
-                            .font(.headline)
-                            .frame(width: 28, height: 28)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .clipShape(Circle())
-                    .disabled(isSubmitDisabled)
-                    .keyboardShortcut(.return, modifiers: .command)
                 }
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 12)
+                .frame(maxWidth: 720)
             }
-            .frame(maxWidth: 720)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(.separator.opacity(0.35), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.06), radius: 22, y: 10)
-
-            VStack(spacing: 0) {
-                ForEach(suggestions, id: \.self) { suggestion in
-                    Button {
-                        promptText = suggestion
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "arrow.turn.down.right")
-                                .foregroundStyle(.secondary)
-                            Text(suggestion)
-                                .foregroundStyle(.primary)
-                            Spacer()
-                        }
-                        .padding(.vertical, 12)
-                    }
-                    .buttonStyle(.plain)
-
-                    if suggestion != suggestions.last {
-                        Divider()
-                    }
-                }
-            }
-            .frame(maxWidth: 720)
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 12) {
                     Button(startSessionButtonTitle, action: onStartSession)
                         .buttonStyle(.bordered)
                         .disabled(isStartDisabled)
-                    Text(emptyState.recoveryHint)
+                    Text(surfaceRecoveryHint)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -149,8 +98,111 @@ struct WorkbenchStartSurfaceView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private var codexPromptSurface: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            TextField("Спросите агента о проекте, коде или проверке…", text: $promptText, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.body)
+                .lineLimit(3...6)
+                .padding(.horizontal, 18)
+                .padding(.top, 16)
+                .padding(.bottom, 14)
+                .onSubmit {
+                    if !isSubmitDisabled {
+                        onSubmit()
+                    }
+                }
+
+            Divider()
+
+            HStack(spacing: 12) {
+                Label(workspaceTitle, systemImage: "folder")
+                Label(branchTitle, systemImage: "point.3.connected.trianglepath.dotted")
+                Spacer(minLength: 0)
+                Menu {
+                    Text("Provider truth приходит из текущего shell state.")
+                } label: {
+                    Label(selectedProvider, systemImage: "sparkles")
+                }
+                .menuStyle(.borderlessButton)
+
+                Menu {
+                    Text("Effort пока shell-level preference.")
+                } label: {
+                    Label(selectedEffort, systemImage: "slider.horizontal.3")
+                }
+                .menuStyle(.borderlessButton)
+
+                Button(action: onSubmit) {
+                    Image(systemName: "arrow.up")
+                        .font(.headline)
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.borderedProminent)
+                .clipShape(Circle())
+                .disabled(isSubmitDisabled)
+                .keyboardShortcut(.return, modifiers: .command)
+            }
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+        }
+        .frame(maxWidth: 720)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(.separator.opacity(0.35), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.06), radius: 22, y: 10)
+    }
+
+    private var claudeReceiptSurface: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("Claude receipt session", systemImage: "checkmark.seal")
+                .font(.headline)
+
+            Text("Этот режим запускает один bounded Claude proof через core-daemon и сохраняет только read-only receipt в списке сессий.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 12) {
+                Label(workspaceTitle, systemImage: "folder")
+                Label(branchTitle, systemImage: "point.3.connected.trianglepath.dotted")
+                Spacer(minLength: 0)
+                Label("chat закрыт", systemImage: "lock")
+            }
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+        }
+        .padding(18)
+        .frame(maxWidth: 720, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(.separator.opacity(0.35), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.06), radius: 22, y: 10)
+    }
+
     private var startSessionButtonTitle: String {
-        selectedProvider == "Claude" ? "Claude chat закрыт; S05b только probe" : "Запустить живую Codex session"
+        selectedProvider == "Claude" ? "Создать Claude receipt session" : "Запустить живую Codex session"
+    }
+
+    private var surfaceTitle: String {
+        selectedProvider == "Claude" ? "Создать Claude receipt" : emptyState.title
+    }
+
+    private var surfaceDetail: String {
+        selectedProvider == "Claude"
+            ? "Запусти один bounded Claude proof. OpenSlop сохранит только read-only receipt в session list."
+            : emptyState.detail
+    }
+
+    private var surfaceRecoveryHint: String {
+        selectedProvider == "Claude"
+            ? "Это не чат и не первый запрос. Resume, approvals, tools и tracing пока закрыты."
+            : emptyState.recoveryHint
     }
 
     private var claudeStatusLine: String {
@@ -167,7 +219,7 @@ struct WorkbenchStartSurfaceView: View {
         }
 
         if claudeRuntimeStatus.available {
-            return "\(claudeRuntimeStatus.versionLabel) найден. S05b proof доступен только как probe; Claude chat ещё закрыт."
+            return "\(claudeRuntimeStatus.versionLabel) найден. S05c создаёт read-only receipt session; Claude chat ещё закрыт."
         }
 
         return "Claude runtime недоступен. GUI держит этот provider fail-closed."

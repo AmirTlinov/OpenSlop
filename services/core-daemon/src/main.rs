@@ -107,6 +107,14 @@ struct CodexSessionBootstrapResponse {
     capabilities: provider_domain::CodexCapabilitySnapshot,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClaudeProofSessionMaterializationResponse {
+    kind: String,
+    session: SessionSummary,
+    proof: ClaudeTurnProofResult,
+}
+
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     let repo_root = repo_root();
@@ -150,6 +158,14 @@ fn main() {
 
     if args.as_slice() == ["--claude-turn-proof"] {
         match claude_turn_proof_json(&repo_root, CLAUDE_TURN_PROOF_PROMPT, true) {
+            Ok(payload) => println!("{payload}"),
+            Err(error) => exit_with_error(error),
+        }
+        return;
+    }
+
+    if args.as_slice() == ["--claude-materialize-proof-session"] {
+        match claude_materialize_proof_session_json(&repo_root, CLAUDE_TURN_PROOF_PROMPT, true) {
             Ok(payload) => println!("{payload}"),
             Err(error) => exit_with_error(error),
         }
@@ -205,7 +221,7 @@ fn main() {
     }
 
     eprintln!(
-        "OpenSlop core-daemon supports: --heartbeat | --query session-list | --start-codex-session | --git-review-snapshot | --claude-runtime-status | --claude-turn-proof | --read-codex-transcript <session-id> _ | --submit-codex-turn <session-id> <input> | --serve-stdio | --reset-session-store | --upsert-proof-session | --print-session-store-path"
+        "OpenSlop core-daemon supports: --heartbeat | --query session-list | --start-codex-session | --git-review-snapshot | --claude-runtime-status | --claude-turn-proof | --claude-materialize-proof-session | --read-codex-transcript <session-id> _ | --submit-codex-turn <session-id> <input> | --serve-stdio | --reset-session-store | --upsert-proof-session | --print-session-store-path"
     );
 }
 
@@ -255,6 +271,24 @@ fn claude_turn_proof_json(
 ) -> Result<String, String> {
     let proof = load_claude_turn_proof(repo_root, input_text);
     serialize_payload(&proof, pretty)
+}
+
+fn claude_materialize_proof_session_json(
+    repo_root: &Path,
+    input_text: &str,
+    pretty: bool,
+) -> Result<String, String> {
+    let proof = load_claude_turn_proof(repo_root, input_text);
+    let session = map_claude_proof_to_session(repo_root, &proof);
+    upsert_runtime_session(repo_root, &session).map_err(|error| error.to_string())?;
+    serialize_payload(
+        &ClaudeProofSessionMaterializationResponse {
+            kind: "claude_proof_session_materialized".to_string(),
+            session,
+            proof,
+        },
+        pretty,
+    )
 }
 
 fn claude_bridge_script(repo_root: &Path) -> PathBuf {
@@ -893,6 +927,32 @@ fn map_transcript_to_session(
     }
 }
 
+fn map_claude_proof_to_session(repo_root: &Path, proof: &ClaudeTurnProofResult) -> SessionSummary {
+    let title = if proof.success {
+        let result = proof.result_text.trim();
+        if result.is_empty() {
+            "Claude receipt proven".to_string()
+        } else {
+            format!("Claude receipt: {}", short_text(result, 48))
+        }
+    } else {
+        "Claude receipt failed".to_string()
+    };
+
+    SessionSummary {
+        id: "claude-turn-proof-latest".to_string(),
+        title,
+        workspace: workspace_name(repo_root),
+        branch: current_branch(repo_root),
+        provider: "Claude".to_string(),
+        status: if proof.success {
+            "receipt_proven".to_string()
+        } else {
+            "receipt_failed".to_string()
+        },
+    }
+}
+
 fn transcript_title(
     session_id: &str,
     transcript: &provider_domain::CodexTranscriptSnapshot,
@@ -918,6 +978,16 @@ fn short_thread_id(thread_id: &str) -> &str {
         .map(|(idx, _)| idx)
         .unwrap_or(thread_id.len());
     &thread_id[..boundary]
+}
+
+fn short_text(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+
+    let mut output = value.chars().take(max_chars).collect::<String>();
+    output.push('…');
+    output
 }
 
 fn current_branch(repo_root: &Path) -> String {
@@ -1007,6 +1077,16 @@ fn handle_parsed_stdio_request(request: StdioRequest, repo_root: &Path) -> Strin
                 .as_deref()
                 .unwrap_or(CLAUDE_TURN_PROOF_PROMPT);
             match claude_turn_proof_json(repo_root, input_text, false) {
+                Ok(payload) => payload,
+                Err(message) => serialize_error(message),
+            }
+        }
+        "claude-materialize-proof-session" => {
+            let input_text = request
+                .input_text
+                .as_deref()
+                .unwrap_or(CLAUDE_TURN_PROOF_PROMPT);
+            match claude_materialize_proof_session_json(repo_root, input_text, false) {
                 Ok(payload) => payload,
                 Err(message) => serialize_error(message),
             }
@@ -1318,6 +1398,45 @@ mod tests {
         let session = map_transcript_to_session(temp.path(), &transcript.thread_id, &transcript);
         assert_eq!(session.title, "Reply with exactly OK.");
         assert_eq!(session.status, "idle");
+    }
+
+    #[test]
+    fn maps_claude_proof_to_readonly_session_summary() {
+        let temp = tempdir().expect("temp dir should exist");
+        let proof = ClaudeTurnProofResult {
+            kind: "claude_turn_proof_result".to_string(),
+            runtime: "claude-code-cli".to_string(),
+            success: true,
+            runtime_available: true,
+            bridge: provider_domain::ClaudeBridgeSummary {
+                name: "claude-bridge".to_string(),
+                version: "0.2.0".to_string(),
+                transport: "stdio-json".to_string(),
+            },
+            model: Some("claude-haiku-4-5-20251001".to_string()),
+            session_id: Some("claude-session".to_string()),
+            result_text: "OPENSLOP_CLAUDE_OK".to_string(),
+            assistant_text: "OPENSLOP_CLAUDE_OK".to_string(),
+            event_count: 5,
+            event_types: vec!["assistant".to_string(), "result:success".to_string()],
+            tool_use_count: 0,
+            malformed_event_count: 0,
+            session_persistence: "disabled".to_string(),
+            total_cost_usd: Some(0.001),
+            duration_ms: Some(1000),
+            exit_code: Some(0),
+            signal: None,
+            timed_out: false,
+            prompt_bytes: 55,
+            warnings: vec![],
+        };
+
+        let session = map_claude_proof_to_session(temp.path(), &proof);
+
+        assert_eq!(session.id, "claude-turn-proof-latest");
+        assert_eq!(session.provider, "Claude");
+        assert_eq!(session.status, "receipt_proven");
+        assert!(session.title.contains("OPENSLOP_CLAUDE_OK"));
     }
 
     #[test]

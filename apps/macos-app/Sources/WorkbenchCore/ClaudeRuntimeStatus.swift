@@ -23,7 +23,7 @@ public struct DaemonClaudeRuntimeStatus: Codable, Equatable, Sendable {
 
     public var boundaryLabel: String {
         available
-            ? "Claude Code найден. S05b probe-only turn receipt доступен; GUI chat ещё закрыт."
+            ? "Claude Code найден. S05c может создать read-only receipt session; GUI chat ещё закрыт."
             : "Claude runtime недоступен. GUI обязан держать этот путь fail-closed."
     }
 }

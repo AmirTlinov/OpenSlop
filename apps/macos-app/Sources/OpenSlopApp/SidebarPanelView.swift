@@ -11,7 +11,10 @@ struct SidebarPanelView: View {
     }
 
     private var liveSessions: [DaemonSessionSummary] {
-        sessions.filter { $0.id.count == 36 && $0.id.filter { $0 == "-" }.count >= 4 }
+        sessions.filter {
+            ($0.id.count == 36 && $0.id.filter { $0 == "-" }.count >= 4)
+                || ($0.provider == "Claude" && $0.status.hasPrefix("receipt_"))
+        }
     }
 
     private var workspaceNames: [String] {
@@ -21,7 +24,7 @@ struct SidebarPanelView: View {
     var body: some View {
         List(selection: $selectedSessionID) {
             Section {
-                sidebarAction("Новый чат", systemImage: "square.and.pencil", detail: "Codex start")
+                sidebarAction("Новая session", systemImage: "square.and.pencil", detail: "provider start")
                 sidebarAction("Поиск", systemImage: "magnifyingglass", detail: "S11")
                 sidebarAction("Плагины", systemImage: "circle.grid.2x2", detail: "planned")
                 sidebarAction("Автоматизации", systemImage: "clock", detail: "planned")
@@ -51,7 +54,7 @@ struct SidebarPanelView: View {
                 }
             }
 
-            Section("Чаты") {
+            Section("Сессии") {
                 if sessions.isEmpty {
                     Text(loadSummary)
                         .font(.callout)
@@ -88,12 +91,12 @@ struct SidebarPanelView: View {
             Spacer()
             Text(detail)
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(detail == "Codex start" ? .secondary : .tertiary)
+                .foregroundStyle(detail == "provider start" ? .secondary : .tertiary)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
                 .background(.quaternary, in: Capsule())
         }
-        .foregroundStyle(detail == "Codex start" ? .primary : .secondary)
+        .foregroundStyle(detail == "provider start" ? .primary : .secondary)
     }
 
     private func sessionRow(_ session: DaemonSessionSummary, compact: Bool) -> some View {

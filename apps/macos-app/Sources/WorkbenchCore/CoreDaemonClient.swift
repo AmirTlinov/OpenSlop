@@ -51,6 +51,10 @@ public struct CoreDaemonClient: Sendable {
         try await SharedCoreDaemonTransport.instance.fetchClaudeTurnProof(inputText: inputText)
     }
 
+    public func materializeClaudeProofSession(inputText: String? = nil) async throws -> DaemonClaudeProofSessionMaterialization {
+        try await SharedCoreDaemonTransport.instance.materializeClaudeProofSession(inputText: inputText)
+    }
+
     public func startCodexSession() async throws -> DaemonCodexSessionBootstrap {
         try await SharedCoreDaemonTransport.instance.startCodexSession()
     }
@@ -183,6 +187,17 @@ private actor CoreDaemonTransport {
                 inputText: inputText
             ),
             expecting: DaemonClaudeTurnProofResult.self
+        )
+    }
+
+    func materializeClaudeProofSession(inputText: String?) throws -> DaemonClaudeProofSessionMaterialization {
+        try ensureRunning()
+        return try send(
+            request: CoreDaemonRequest(
+                operation: "claude-materialize-proof-session",
+                inputText: inputText
+            ),
+            expecting: DaemonClaudeProofSessionMaterialization.self
         )
     }
 

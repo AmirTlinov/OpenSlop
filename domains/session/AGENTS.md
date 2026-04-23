@@ -28,3 +28,4 @@ session
 - `rust/session-domain` держит bootstrap sessions, SQLite-backed persisted truth и rehydration.
 - Session store живёт в repo-local runtime path `.openslop/state/session-store.sqlite3`.
 - Domain-local skill package фиксирует локальные инварианты этого slice.
+- S05c добавляет read-only Claude receipt session summary через `upsert_runtime_session`; это не full Claude chat lifecycle.

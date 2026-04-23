@@ -1,0 +1,9 @@
+flowchart LR
+    GUI[OpenSlop.app\nProvider=Claude Start] --> CoreClient[WorkbenchCore\nmaterializeClaudeProofSession]
+    Probe[OpenSlopClaudeReceiptSessionProbe] --> CoreClient
+    CoreClient --> Daemon[core-daemon\nclaude-materialize-proof-session]
+    Daemon --> Proof[claude-turn-proof\nreal Claude CLI receipt]
+    Proof --> Summary[SessionSummary\nclaude-turn-proof-latest]
+    Summary --> Store[session_store.sqlite3]
+    Store --> Projection[session_list]
+    Projection --> GUI

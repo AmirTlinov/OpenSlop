@@ -78,3 +78,7 @@ provider
   - `domains/provider/contracts/claude-bridge/v1/TurnProofResult.json` pins the receipt shape;
   - `core-daemon` exposes `claude-turn-proof`, and Swift sees it only through `OpenSlopClaudeTurnProofProbe`;
   - session mirror, native approvals, platform tools and tracing remain out of scope.
+- S05c materializes that receipt into a read-only session summary:
+  - `core-daemon` exposes `claude-materialize-proof-session`;
+  - session lifecycle is still not full Claude chat lifecycle;
+  - the materialized session only proves latest bounded receipt.

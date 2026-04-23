@@ -67,6 +67,21 @@ struct WorkbenchSeed {
             }
         }
 
+        if let session, session.provider == "Claude", session.status.hasPrefix("receipt_") {
+            return [
+                TimelineItemSeed(
+                    id: "\(session.id)-receipt",
+                    kind: .verify,
+                    title: session.status == "receipt_proven" ? "Claude receipt proven" : "Claude receipt failed",
+                    detail: session.status == "receipt_proven"
+                        ? "Один bounded Claude turn был выполнен через bridge -> core-daemon -> session_list. Это read-only receipt, не Claude chat."
+                        : "Claude receipt path завершился fail-closed. Chat lifecycle остаётся закрыт.",
+                    secondaryDetail: "\(session.workspace) · \(session.branch) · \(session.status)",
+                    prefersMonospacedDetail: false
+                ),
+            ]
+        }
+
         return []
     }
 

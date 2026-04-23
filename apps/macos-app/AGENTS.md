@@ -22,6 +22,7 @@ macos-app
    │  ├─ GitReviewSnapshot.swift
    │  ├─ ClaudeRuntimeStatus.swift
    │  ├─ ClaudeTurnProofResult.swift
+   │  ├─ ClaudeProofSessionMaterialization.swift
    │  ├─ RepoRootLocator.swift
    │  └─ CoreDaemonClient.swift
    ├─ OpenSlopApp/
@@ -78,7 +79,9 @@ macos-app
    │  └─ main.swift
    ├─ OpenSlopClaudeStatusProbe/
    │  └─ main.swift
-   └─ OpenSlopClaudeTurnProofProbe/
+   ├─ OpenSlopClaudeTurnProofProbe/
+   │  └─ main.swift
+   └─ OpenSlopClaudeReceiptSessionProbe/
       └─ main.swift
 ```
 
@@ -129,3 +132,4 @@ macos-app
 
 - `WorkbenchCore/ClaudeRuntimeStatus.swift`, `ClaudeRuntimeStatusView.swift` и `OpenSlopClaudeStatusProbe` materialize S05a: GUI показывает только real Claude runtime status boundary и не открывает fake Claude turns.
 - `WorkbenchCore/ClaudeTurnProofResult.swift` и `OpenSlopClaudeTurnProofProbe` materialize S05b: один реальный non-persistent Claude turn проходит через daemon. GUI chat для Claude всё ещё закрыт.
+- `WorkbenchCore/ClaudeProofSessionMaterialization.swift` и `OpenSlopClaudeReceiptSessionProbe` materialize S05c: Claude receipt можно создать как read-only session summary. Submit/chat/resume для Claude остаются закрыты.

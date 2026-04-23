@@ -97,6 +97,7 @@ struct WorkbenchRootView: View {
     @State private var claudeRuntimeStatus: DaemonClaudeRuntimeStatus?
     @State private var claudeRuntimeError: String?
     @State private var isClaudeRuntimeLoading = false
+    @State private var isClaudeProofRunning = false
     @State private var inspectorTab: InspectorPanelTab = .summary
     @State private var commandExecContinuation: CheckedContinuation<DaemonCodexCommandExecControlRequest?, Never>?
     @State private var commandExecAllowsMoreControls = false
@@ -118,7 +119,7 @@ struct WorkbenchRootView: View {
     }
 
     private var shouldShowBottomComposer: Bool {
-        currentTimelineEmptyState == nil
+        currentTimelineEmptyState == nil && selectedSession?.provider != "Claude"
     }
 
     private var isCodexBootstrapRunning: Bool {
@@ -130,6 +131,17 @@ struct WorkbenchRootView: View {
 
     private var canStartCodexSession: Bool {
         shellState.selectedProvider == "Codex" && !isCodexBootstrapRunning
+    }
+
+    private var canStartProviderSession: Bool {
+        switch shellState.selectedProvider {
+        case "Codex":
+            return canStartCodexSession
+        case "Claude":
+            return claudeRuntimeStatus?.available == true && !isClaudeProofRunning
+        default:
+            return false
+        }
     }
 
     private var projectionKind: String {
@@ -270,12 +282,12 @@ struct WorkbenchRootView: View {
                         claudeRuntimeError: claudeRuntimeError,
                         isClaudeRuntimeLoading: isClaudeRuntimeLoading,
                         onStartSession: {
-                            Task { await startCodexSession() }
+                            Task { await startProviderSession() }
                         },
                         onSubmit: {
                             Task { await submitTurn() }
                         },
-                        isStartDisabled: !canStartCodexSession,
+                        isStartDisabled: !canStartProviderSession,
                         isSubmitDisabled: !canSubmitTurn
                     )
                     .frame(minWidth: 720)
@@ -368,10 +380,10 @@ struct WorkbenchRootView: View {
                         }
                     }
                     .keyboardShortcut("r", modifiers: .command)
-                    Button("Запустить") {
-                        Task { await startCodexSession() }
+                    Button(shellState.selectedProvider == "Claude" ? "Claude receipt" : "Запустить") {
+                        Task { await startProviderSession() }
                     }
-                    .disabled(!canStartCodexSession)
+                    .disabled(!canStartProviderSession)
                     .keyboardShortcut("n", modifiers: .command)
                     Button(shellState.isInspectorVisible ? "Скрыть inspector" : "Показать inspector") {
                         shellState.isInspectorVisible.toggle()
@@ -533,6 +545,18 @@ struct WorkbenchRootView: View {
     }
 
     @MainActor
+    private func startProviderSession() async {
+        switch shellState.selectedProvider {
+        case "Codex":
+            await startCodexSession()
+        case "Claude":
+            await materializeClaudeReceiptSession()
+        default:
+            codexBootstrapState = .failed(message: startCodexBlockedMessage())
+        }
+    }
+
+    @MainActor
     private func startCodexSession() async {
         guard canStartCodexSession else {
             codexBootstrapState = .failed(message: startCodexBlockedMessage())
@@ -556,6 +580,36 @@ struct WorkbenchRootView: View {
     }
 
     @MainActor
+    private func materializeClaudeReceiptSession() async {
+        guard shellState.selectedProvider == "Claude" else {
+            transcriptState = .unavailable(message: "Claude receipt можно запускать только из Claude provider state.")
+            return
+        }
+
+        guard claudeRuntimeStatus?.available == true else {
+            transcriptState = .unavailable(message: "Claude runtime недоступен. Receipt session не запускается.")
+            return
+        }
+
+        isClaudeProofRunning = true
+        transcriptState = .streaming(summary: "Запускаем real Claude receipt proof через core-daemon.")
+
+        do {
+            let materialized = try await client.materializeClaudeProofSession()
+            isClaudeProofRunning = false
+            transcript = nil
+            pendingApproval = nil
+            transcriptState = materialized.proof.success
+                ? .loaded(summary: "Claude receipt session materialized: \(materialized.proof.resultText). Chat lifecycle still closed.")
+                : .failed(message: "Claude receipt failed closed: \(materialized.proof.warnings.joined(separator: "; "))")
+            await loadSessions(force: true, preferredSessionID: materialized.session.id)
+        } catch {
+            isClaudeProofRunning = false
+            transcriptState = .failed(message: error.localizedDescription)
+        }
+    }
+
+    @MainActor
     private func loadTranscriptForSelection(force: Bool) async {
         guard let selectedSession else {
             transcript = nil
@@ -565,6 +619,10 @@ struct WorkbenchRootView: View {
 
         guard looksLikeLiveCodexThread(selectedSession.id) else {
             transcript = nil
+            if selectedSession.provider == "Claude" {
+                transcriptState = .unavailable(message: "Claude receipt session read-only. Chat lifecycle, resume и approvals ещё закрыты.")
+                return
+            }
             transcriptState = .unavailable(message: "Эта session seeded. Нажми Запустить, чтобы создать живую Codex session.")
             return
         }
@@ -871,7 +929,10 @@ struct WorkbenchRootView: View {
 
     private func startCodexBlockedMessage() -> String {
         if shellState.selectedProvider == "Claude" {
-            return "Claude runtime найден как status/proof boundary. Codex start не должен запускаться из Claude provider state."
+            if isClaudeProofRunning {
+                return "Claude receipt proof уже выполняется."
+            }
+            return "Claude может создать только read-only receipt session. Chat lifecycle ещё закрыт."
         }
 
         if isCodexBootstrapRunning {
