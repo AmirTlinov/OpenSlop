@@ -11,9 +11,9 @@ struct OpenSlopTimelineEmptyStateProbe {
         )
         assertState(
             noSession,
-            title: "Нет выбранной session",
-            image: "rectangle.stack",
-            mustContain: "sidebar"
+            title: "Что нам сделать в OpenSlop?",
+            image: "sparkles.rectangle.stack",
+            mustContain: "Codex session"
         )
 
         let emptyTranscript = WorkbenchTimelineEmptyStateProjector.project(
@@ -22,7 +22,7 @@ struct OpenSlopTimelineEmptyStateProbe {
         )
         assertState(
             emptyTranscript,
-            title: "Transcript пуст",
+            title: "Что делаем дальше?",
             image: "text.bubble",
             mustContain: "Live Codex"
         )
@@ -33,7 +33,7 @@ struct OpenSlopTimelineEmptyStateProbe {
         )
         assertState(
             unavailableTranscript,
-            title: "Transcript недоступен",
+            title: "Эта session ещё не раскрыта",
             image: "exclamationmark.bubble",
             mustContain: "Seeded Session"
         )
@@ -47,24 +47,21 @@ struct OpenSlopTimelineEmptyStateProbe {
             fail("live transcript with items should not produce an empty state.")
         }
 
-        let syntheticSummaryLeak = [
-            noSession,
-            emptyTranscript,
-            unavailableTranscript,
-        ].compactMap { $0 }.contains { state in
-            [state.title, state.detail, state.recoveryHint]
-                .joined(separator: "\n")
-                .contains("daemon unavailable")
-        }
-
-        guard !syntheticSummaryLeak else {
-            fail("empty state leaked caller-authored summary strings into center truth.")
-        }
+        let forbiddenFragments = [
+            "daemon unavailable",
+            "session_list",
+            "notLoaded",
+            "materialized",
+            "proof target",
+            "S04",
+        ]
 
         for state in [noSession, emptyTranscript, unavailableTranscript].compactMap({ $0 }) {
             let combined = [state.title, state.detail, state.recoveryHint].joined(separator: "\n")
-            guard !combined.contains("S04"), !combined.localizedCaseInsensitiveContains("proof target") else {
-                fail("empty state leaked synthetic proof storytelling: \(combined)")
+            for fragment in forbiddenFragments {
+                guard !combined.localizedCaseInsensitiveContains(fragment) else {
+                    fail("empty state leaked engineering/proof wording \(fragment): \(combined)")
+                }
             }
         }
 

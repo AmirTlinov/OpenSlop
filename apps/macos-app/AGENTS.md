@@ -26,6 +26,7 @@ macos-app
    │  ├─ OpenSlopApp.swift
    │  ├─ WorkbenchSeed.swift
    │  ├─ WorkbenchRootView.swift
+   │  ├─ WorkbenchStartSurfaceView.swift
    │  ├─ WorkbenchLayoutGeometryBridge.swift
    │  ├─ ApprovalSheetView.swift
    │  ├─ MonospacedTailBlockView.swift
@@ -115,3 +116,6 @@ macos-app
 
 - `WorkbenchCore/GitReviewSnapshot.swift` и `GitReviewPaneView.swift` materialize S06a read-only Git review surface. UI показывает daemon snapshot и не вызывает Git напрямую.
 - `OpenSlopGitReviewProbe` доказывает dirty fixture, selected file preview, non-git warning и no-mutation law.
+
+- `WorkbenchStartSurfaceView.swift` materializes S01d native start/composer surface. It is presentation-only and does not add runtime truth.
+- `InspectorPanelView` now has Summary / Verify / Browser tabs. Browser and Verify tabs are honest planned/pre-harness surfaces, not live feature claims.

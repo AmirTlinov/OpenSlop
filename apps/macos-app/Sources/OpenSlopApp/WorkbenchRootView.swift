@@ -79,7 +79,7 @@ struct WorkbenchRootView: View {
 
     @State private var sessions: [DaemonSessionSummary] = []
     @State private var shellState: WorkbenchShellState
-    @State private var promptText = "Reply with exactly OK."
+    @State private var promptText = ""
     @State private var loadState: SessionProjectionLoadState = .idle
     @State private var codexBootstrapState: CodexBootstrapState = .idle
     @State private var transcriptState: TranscriptState = .idle
@@ -94,6 +94,7 @@ struct WorkbenchRootView: View {
     @State private var gitReviewSelectedPath: String?
     @State private var gitReviewError: String?
     @State private var isGitReviewLoading = false
+    @State private var inspectorTab: InspectorPanelTab = .summary
     @State private var commandExecContinuation: CheckedContinuation<DaemonCodexCommandExecControlRequest?, Never>?
     @State private var commandExecAllowsMoreControls = false
     @State private var commandExecResizeSent = false
@@ -104,6 +105,28 @@ struct WorkbenchRootView: View {
 
     private var selectedSession: DaemonSessionSummary? {
         sessions.first(where: { $0.id == shellState.selectedSessionID }) ?? sessions.first
+    }
+
+    private var currentTimelineEmptyState: WorkbenchTimelineEmptyState? {
+        seed.timelineEmptyState(
+            for: selectedSession,
+            transcript: transcript
+        )
+    }
+
+    private var shouldShowBottomComposer: Bool {
+        currentTimelineEmptyState == nil
+    }
+
+    private var isCodexBootstrapRunning: Bool {
+        if case .running = codexBootstrapState {
+            return true
+        }
+        return false
+    }
+
+    private var canStartCodexSession: Bool {
+        shellState.selectedProvider == "Codex" && !isCodexBootstrapRunning
     }
 
     private var projectionKind: String {
@@ -236,10 +259,18 @@ struct WorkbenchRootView: View {
                             transcript: transcript,
                             pendingApproval: pendingApproval
                         ),
-                        emptyState: seed.timelineEmptyState(
-                            for: selectedSession,
-                            transcript: transcript
-                        )
+                        emptyState: currentTimelineEmptyState,
+                        promptText: $promptText,
+                        selectedProvider: shellState.selectedProvider,
+                        selectedEffort: shellState.selectedEffort,
+                        onStartSession: {
+                            Task { await startCodexSession() }
+                        },
+                        onSubmit: {
+                            Task { await submitTurn() }
+                        },
+                        isStartDisabled: !canStartCodexSession,
+                        isSubmitDisabled: !canSubmitTurn
                     )
                     .frame(minWidth: 720)
 
@@ -256,6 +287,7 @@ struct WorkbenchRootView: View {
                             gitReviewSnapshot: gitReviewSnapshot,
                             gitReviewError: gitReviewError,
                             isGitReviewLoading: isGitReviewLoading,
+                            selectedTab: $inspectorTab,
                             onRefreshGitReview: {
                                 Task { await loadGitReview(selectedPath: gitReviewSelectedPath) }
                             },
@@ -289,17 +321,19 @@ struct WorkbenchRootView: View {
                     }
                 }
 
-                Divider()
+                if shouldShowBottomComposer {
+                    Divider()
 
-                ComposerBarView(
-                    promptText: $promptText,
-                    selectedProvider: $shellState.selectedProvider,
-                    selectedEffort: $shellState.selectedEffort,
-                    onSubmit: {
-                        Task { await submitTurn() }
-                    },
-                    isSubmitDisabled: !canSubmitTurn
-                )
+                    ComposerBarView(
+                        promptText: $promptText,
+                        selectedProvider: $shellState.selectedProvider,
+                        selectedEffort: $shellState.selectedEffort,
+                        onSubmit: {
+                            Task { await submitTurn() }
+                        },
+                        isSubmitDisabled: !canSubmitTurn
+                    )
+                }
             }
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
@@ -320,6 +354,7 @@ struct WorkbenchRootView: View {
                     Button("Запустить") {
                         Task { await startCodexSession() }
                     }
+                    .disabled(!canStartCodexSession)
                     .keyboardShortcut("n", modifiers: .command)
                     Button(shellState.isInspectorVisible ? "Скрыть inspector" : "Показать inspector") {
                         shellState.isInspectorVisible.toggle()

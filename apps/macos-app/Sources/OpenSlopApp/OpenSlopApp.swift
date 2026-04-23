@@ -17,5 +17,8 @@ struct OpenSlopApp: App {
             width: CGFloat(initialShellState.layout.windowWidth),
             height: CGFloat(initialShellState.layout.windowHeight)
         )
+        .windowStyle(.hiddenTitleBar)
+        .windowToolbarStyle(.unified)
+        .windowBackgroundDragBehavior(.enabled)
     }
 }

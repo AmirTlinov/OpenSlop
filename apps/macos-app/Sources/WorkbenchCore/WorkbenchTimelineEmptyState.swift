@@ -30,27 +30,27 @@ public enum WorkbenchTimelineEmptyStateProjector {
 
         guard let selectedSessionTitle, !selectedSessionTitle.isEmpty else {
             return WorkbenchTimelineEmptyState(
-                title: "Нет выбранной session",
-                systemImage: "rectangle.stack",
-                detail: "Центр окна ждёт выбранную session из sidebar.",
-                recoveryHint: "Создай живую Codex session или дождись session list от daemon."
+                title: "Что нам сделать в OpenSlop?",
+                systemImage: "sparkles.rectangle.stack",
+                detail: "Выбери чат слева или начни новую живую Codex session.",
+                recoveryHint: "Центр окна готов принять первый запрос. Runtime-правда останется за core daemon."
             )
         }
 
         if transcriptItemCount == 0 {
             return WorkbenchTimelineEmptyState(
-                title: "Transcript пуст",
+                title: "Что делаем дальше?",
                 systemImage: "text.bubble",
-                detail: "\(selectedSessionTitle): реальных timeline items пока нет.",
-                recoveryHint: "Отправь первый turn, чтобы центр начал показывать события transcript."
+                detail: "\(selectedSessionTitle) готова, но сообщений в timeline пока нет.",
+                recoveryHint: "Отправь первый turn, чтобы здесь появилась реальная история работы."
             )
         }
 
         return WorkbenchTimelineEmptyState(
-            title: "Transcript недоступен",
+            title: "Эта session ещё не раскрыта",
             systemImage: "exclamationmark.bubble",
-            detail: "\(selectedSessionTitle): transcript snapshot сейчас не materialized в shell.",
-            recoveryHint: "Если это seeded session, нажми «Запустить» для живой Codex session."
+            detail: "\(selectedSessionTitle) есть в списке, но live transcript сейчас недоступен.",
+            recoveryHint: "Для seeded session нажми «Запустить». Для live session попробуй обновить."
         )
     }
 }

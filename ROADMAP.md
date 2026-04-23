@@ -12,6 +12,7 @@
 | `S01a-workbench-shell-state-restoration` | Persisted shell state, inspector toggle и первые semantic shell references | S00 | done |
 | `S01b-workbench-shell-layout-geometry` | Persisted window/sidebar/inspector geometry для shell layout | S01a | done |
 | `S01c-workbench-shell-empty-window-grammar` | Honest empty/unavailable center grammar без S04 proof placeholders | S01b | done |
+| `S01d-native-workbench-polish` | Native shell polish: sidebar, start surface, inspector tabs without fake runtime | S01c,S06a | done |
 | `S02-event-spine` | Canonical event log, IPC, projections | S00 | done |
 | `S03-codex-runtime` | Live Codex bootstrap lane через app-server | S02 | done |
 | `S04-transcript-approval-pty` | Live turn transcript, native approvals и read-only/live terminal ceiling | S03 | done |
