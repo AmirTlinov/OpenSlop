@@ -30,6 +30,14 @@ public struct DaemonSessionSummary: Codable, Equatable, Hashable, Identifiable, 
 
 struct CoreDaemonRequest: Codable, Sendable {
     let operation: String
+    let sessionId: String?
+    let inputText: String?
+
+    init(operation: String, sessionId: String? = nil, inputText: String? = nil) {
+        self.operation = operation
+        self.sessionId = sessionId
+        self.inputText = inputText
+    }
 }
 
 struct CoreDaemonErrorResponse: Codable, Sendable {

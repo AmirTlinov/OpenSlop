@@ -1,6 +1,24 @@
 flowchart LR
-    User["User intent"] --> Slice["S04-transcript-approval-pty"]
-    Slice --> N1["apps/macos-app"]
-    Slice --> N2["domains/session"]
-    Slice --> N3["domains/approval"]
-    Slice --> N4["domains/artifact"]
+    User["Пользователь"] --> GUI["macOS GUI"]
+    GUI --> Transport["CoreDaemonClient\nlong-lived stdio"]
+    Transport --> Daemon["core-daemon"]
+    Daemon --> Registry["Codex runtime registry\nloaded sessions in memory"]
+    Daemon --> Provider["provider-domain"]
+    Provider --> AppServer["codex app-server"]
+
+    Registry -->|session just created, first turn pending| LiveThread["loaded live thread"]
+    Provider -->|cold transcript read| ArchiveRead["thread/read"]
+    Provider -->|interactive turn on archived thread| Resume["thread/resume"]
+    Resume --> TurnStart["turn/start"]
+    LiveThread --> TurnStart
+    TurnStart --> Poll["thread/read polling"]
+    Poll --> Snapshot["CodexTranscriptSnapshot"]
+    ArchiveRead --> Snapshot
+    Snapshot --> Daemon
+    Daemon --> GUI
+
+    Note1["до первого completed turn thread ещё не materialized на диск"]
+    Note2["после materialization cold read может вернуть status = notLoaded"]
+
+    LiveThread -.-> Note1
+    ArchiveRead -.-> Note2

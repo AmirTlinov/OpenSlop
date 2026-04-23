@@ -4,6 +4,7 @@ import WorkbenchCore
 struct TimelinePanelView: View {
     let session: DaemonSessionSummary?
     let loadSummary: String
+    let transcriptSummary: String
     let timeline: [TimelineItemSeed]
 
     var body: some View {
@@ -17,7 +18,7 @@ struct TimelinePanelView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Label("S02", systemImage: "bolt.horizontal.fill")
+                Label("S04", systemImage: "text.bubble.fill")
                     .font(.caption.weight(.semibold))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
@@ -28,6 +29,14 @@ struct TimelinePanelView: View {
             Divider()
 
             ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(transcriptSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+
                 LazyVStack(alignment: .leading, spacing: 14) {
                     ForEach(timeline) { item in
                         VStack(alignment: .leading, spacing: 6) {

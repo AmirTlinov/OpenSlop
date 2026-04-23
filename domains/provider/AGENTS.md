@@ -5,6 +5,7 @@
 Когда идти сюда:
 - Когда интегрируется Codex, Claude или следующий движок.
 - Когда нужен exact protocol subset или version pinning для provider boundary.
+- Когда нужно разрулить session lifecycle на provider-стороне: bootstrap, cold read, resume, turn.
 
 Соседи: session, approval, browser, verify
 
@@ -22,5 +23,8 @@ provider
 ```
 
 Текущее состояние:
-- Materialized exact contract subset для `initialize` и `thread/start` на `codex-cli 0.123.0`.
-- `rust/provider-domain` владеет первым live Codex bootstrap lane через app-server stdio.
+- Materialized exact contract subset для `initialize`, `thread/start`, `thread/read`, `thread/resume` и `turn/start` на `codex-cli 0.123.0`.
+- `rust/provider-domain` владеет двумя честными путями:
+  - live bootstrap + first turn через живой runtime registry;
+  - cold transcript read и resume перед новым интерактивным turn после materialization.
+- Важная граница: до первого completed turn thread ещё не materialized на диск.

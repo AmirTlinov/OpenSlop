@@ -43,6 +43,14 @@ public struct CoreDaemonClient: Sendable {
         try await SharedCoreDaemonTransport.instance.startCodexSession()
     }
 
+    public func fetchCodexTranscript(sessionId: String) async throws -> DaemonCodexTranscript {
+        try await SharedCoreDaemonTransport.instance.fetchCodexTranscript(sessionId: sessionId)
+    }
+
+    public func submitCodexTurn(sessionId: String, inputText: String) async throws -> DaemonCodexTranscript {
+        try await SharedCoreDaemonTransport.instance.submitCodexTurn(sessionId: sessionId, inputText: inputText)
+    }
+
     public func daemonProcessIdentifier() async throws -> Int32 {
         try await SharedCoreDaemonTransport.instance.daemonProcessIdentifier()
     }
@@ -67,6 +75,26 @@ private actor CoreDaemonTransport {
     func startCodexSession() throws -> DaemonCodexSessionBootstrap {
         try ensureRunning()
         return try send(operation: "codex-start-session", expecting: DaemonCodexSessionBootstrap.self)
+    }
+
+    func fetchCodexTranscript(sessionId: String) throws -> DaemonCodexTranscript {
+        try ensureRunning()
+        return try send(
+            request: CoreDaemonRequest(operation: "codex-read-transcript", sessionId: sessionId),
+            expecting: DaemonCodexTranscript.self
+        )
+    }
+
+    func submitCodexTurn(sessionId: String, inputText: String) throws -> DaemonCodexTranscript {
+        try ensureRunning()
+        return try send(
+            request: CoreDaemonRequest(
+                operation: "codex-submit-turn",
+                sessionId: sessionId,
+                inputText: inputText
+            ),
+            expecting: DaemonCodexTranscript.self
+        )
     }
 
     func daemonProcessIdentifier() throws -> Int32 {
@@ -114,6 +142,10 @@ private actor CoreDaemonTransport {
     }
 
     private func send<Response: Decodable>(operation: String, expecting type: Response.Type) throws -> Response {
+        try send(request: CoreDaemonRequest(operation: operation), expecting: type)
+    }
+
+    private func send<Response: Decodable>(request: CoreDaemonRequest, expecting type: Response.Type) throws -> Response {
         guard let stdinHandle else {
             throw CoreDaemonClientError.processLaunchFailed("stdin unavailable")
         }
@@ -121,7 +153,7 @@ private actor CoreDaemonTransport {
         let encoder = JSONEncoder()
         let payload: Data
         do {
-            payload = try encoder.encode(CoreDaemonRequest(operation: operation))
+            payload = try encoder.encode(request)
         } catch {
             throw CoreDaemonClientError.requestEncodingFailed(error.localizedDescription)
         }

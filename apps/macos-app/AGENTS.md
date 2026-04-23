@@ -10,6 +10,8 @@ macos-app
 └─ Sources/
    ├─ WorkbenchCore/
    │  ├─ SessionProjection.swift
+   │  ├─ CodexSessionBootstrap.swift
+   │  ├─ CodexTranscriptSnapshot.swift
    │  ├─ RepoRootLocator.swift
    │  └─ CoreDaemonClient.swift
    ├─ OpenSlopApp/
@@ -20,13 +22,17 @@ macos-app
    │  ├─ TimelinePanelView.swift
    │  ├─ InspectorPanelView.swift
    │  └─ ComposerBarView.swift
-   └─ OpenSlopProbe/
+   ├─ OpenSlopProbe/
+   │  └─ main.swift
+   ├─ OpenSlopCodexProbe/
+   │  └─ main.swift
+   └─ OpenSlopTurnProbe/
       └─ main.swift
 ```
 
 Сюда идут задачи про window shell, layout, toolbar, keyboard navigation и рендеринг native surfaces.
 
-Текущий реальный proof target для S02:
+Текущий реальный proof target для S04:
 - `WorkbenchCore/CoreDaemonClient.swift` держит long-lived stdio transport к `core-daemon --serve-stdio`.
-- `OpenSlopProbe` делает две последовательные query over one transport и проверяет reuse по PID.
-- `WorkbenchRootView` показывает real daemon-backed sessions и summary transport state вместо одноразового process query.
+- `WorkbenchRootView` отправляет первый live turn, читает daemon-owned transcript snapshot и не владеет runtime truth.
+- `OpenSlopTurnProbe` доказывает reuse daemon PID и наличие user/agent transcript items после completed turn.

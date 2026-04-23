@@ -4,10 +4,12 @@ struct ComposerBarView: View {
     @Binding var promptText: String
     @Binding var selectedProvider: String
     @Binding var selectedEffort: String
+    let onSubmit: () -> Void
+    let isSubmitDisabled: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            TextField("Опиши следующий bounded шаг", text: $promptText, axis: .vertical)
+            TextField("Напиши сообщение для живого turn", text: $promptText, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(2...5)
 
@@ -27,8 +29,9 @@ struct ComposerBarView: View {
 
                 Spacer()
 
-                Button("Новый turn") { }
+                Button("Отправить", action: onSubmit)
                     .buttonStyle(.borderedProminent)
+                    .disabled(isSubmitDisabled)
             }
         }
         .padding(16)

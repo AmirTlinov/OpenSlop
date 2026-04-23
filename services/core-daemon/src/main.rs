@@ -1,4 +1,6 @@
-use provider_domain::{CodexThreadBootstrap, start_codex_session};
+use provider_domain::{
+    CodexRuntimeRegistry, CodexThreadBootstrap, read_codex_transcript, submit_codex_turn,
+};
 use serde::{Deserialize, Serialize};
 use session_domain::{
     SessionSummary, load_persisted_session_projection, proof_session_id, reset_session_store,
@@ -8,12 +10,18 @@ use std::env;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{LazyLock, Mutex};
+
+static CODEX_RUNTIME_REGISTRY: LazyLock<Mutex<CodexRuntimeRegistry>> =
+    LazyLock::new(|| Mutex::new(CodexRuntimeRegistry::new()));
 
 #[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum StdioRequest {
-    Operation { operation: String },
-    LegacyQuery { query: String },
+#[serde(rename_all = "camelCase")]
+struct StdioRequest {
+    operation: Option<String>,
+    query: Option<String>,
+    session_id: Option<String>,
+    input_text: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -65,6 +73,22 @@ fn main() {
         return;
     }
 
+    if args.len() == 3 && args[0] == "--read-codex-transcript" {
+        match codex_read_transcript_json(&repo_root, &args[1], true) {
+            Ok(payload) => println!("{payload}"),
+            Err(error) => exit_with_error(error),
+        }
+        return;
+    }
+
+    if args.len() == 3 && args[0] == "--submit-codex-turn" {
+        match codex_submit_turn_json(&repo_root, &args[1], &args[2], true) {
+            Ok(payload) => println!("{payload}"),
+            Err(error) => exit_with_error(error),
+        }
+        return;
+    }
+
     if args.as_slice() == ["--serve-stdio"] {
         if let Err(error) = serve_stdio(&repo_root) {
             eprintln!("core-daemon stdio server failed: {error}");
@@ -98,7 +122,7 @@ fn main() {
     }
 
     eprintln!(
-        "OpenSlop core-daemon supports: --heartbeat | --query session-list | --start-codex-session | --serve-stdio | --reset-session-store | --upsert-proof-session | --print-session-store-path"
+        "OpenSlop core-daemon supports: --heartbeat | --query session-list | --start-codex-session | --read-codex-transcript <session-id> _ | --submit-codex-turn <session-id> <input> | --serve-stdio | --reset-session-store | --upsert-proof-session | --print-session-store-path"
     );
 }
 
@@ -128,7 +152,7 @@ fn session_list_json(repo_root: &Path, pretty: bool) -> Result<String, String> {
 }
 
 fn codex_start_session_json(repo_root: &Path, pretty: bool) -> Result<String, String> {
-    let bootstrap = start_codex_session(repo_root).map_err(|error| error.to_string())?;
+    let bootstrap = with_codex_runtime_registry(|runtime| runtime.start_session(repo_root))?;
     let session = map_bootstrap_to_session(repo_root, &bootstrap);
     upsert_runtime_session(repo_root, &session).map_err(|error| error.to_string())?;
 
@@ -155,19 +179,91 @@ fn codex_start_session_json(repo_root: &Path, pretty: bool) -> Result<String, St
     }
 }
 
+fn codex_read_transcript_json(
+    repo_root: &Path,
+    session_id: &str,
+    pretty: bool,
+) -> Result<String, String> {
+    let transcript = with_codex_runtime_registry(|runtime| {
+        if runtime.has_loaded_session(session_id) {
+            runtime.read_transcript(repo_root, session_id)
+        } else {
+            read_codex_transcript(repo_root, session_id)
+        }
+    })?;
+    let session = map_transcript_to_session(repo_root, session_id, &transcript);
+    upsert_runtime_session(repo_root, &session).map_err(|error| error.to_string())?;
+    serialize_payload(&transcript, pretty)
+}
+
+fn codex_submit_turn_json(
+    repo_root: &Path,
+    session_id: &str,
+    input_text: &str,
+    pretty: bool,
+) -> Result<String, String> {
+    let transcript = with_codex_runtime_registry(|runtime| {
+        if runtime.has_loaded_session(session_id) {
+            runtime.submit_turn(repo_root, session_id, input_text)
+        } else {
+            submit_codex_turn(repo_root, session_id, input_text)
+        }
+    })?;
+    let session = map_transcript_to_session(repo_root, session_id, &transcript);
+    upsert_runtime_session(repo_root, &session).map_err(|error| error.to_string())?;
+    serialize_payload(&transcript, pretty)
+}
+
+fn serialize_payload<T: Serialize>(payload: &T, pretty: bool) -> Result<String, String> {
+    if pretty {
+        serde_json::to_string_pretty(payload).map_err(|error| error.to_string())
+    } else {
+        serde_json::to_string(payload).map_err(|error| error.to_string())
+    }
+}
+
 fn map_bootstrap_to_session(repo_root: &Path, bootstrap: &CodexThreadBootstrap) -> SessionSummary {
     SessionSummary {
         id: bootstrap.thread_id.clone(),
         title: format!("Codex thread {}", short_thread_id(&bootstrap.thread_id)),
-        workspace: repo_root
-            .file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or("workspace")
-            .to_string(),
+        workspace: workspace_name(repo_root),
         branch: current_branch(repo_root),
         provider: "Codex".to_string(),
-        status: bootstrap.thread_status.clone(),
+        status: "needs_first_turn".to_string(),
     }
+}
+
+fn map_transcript_to_session(
+    repo_root: &Path,
+    session_id: &str,
+    transcript: &provider_domain::CodexTranscriptSnapshot,
+) -> SessionSummary {
+    SessionSummary {
+        id: session_id.to_string(),
+        title: transcript_title(session_id, transcript),
+        workspace: workspace_name(repo_root),
+        branch: current_branch(repo_root),
+        provider: "Codex".to_string(),
+        status: transcript.thread_status.clone(),
+    }
+}
+
+fn transcript_title(
+    session_id: &str,
+    transcript: &provider_domain::CodexTranscriptSnapshot,
+) -> String {
+    if !transcript.preview.trim().is_empty() {
+        return transcript.preview.trim().to_string();
+    }
+    format!("Codex thread {}", short_thread_id(session_id))
+}
+
+fn workspace_name(repo_root: &Path) -> String {
+    repo_root
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("workspace")
+        .to_string()
 }
 
 fn short_thread_id(thread_id: &str) -> &str {
@@ -199,6 +295,15 @@ fn current_branch(repo_root: &Path) -> String {
     }
 }
 
+fn with_codex_runtime_registry<T>(
+    action: impl FnOnce(&mut CodexRuntimeRegistry) -> Result<T, provider_domain::CodexRuntimeError>,
+) -> Result<T, String> {
+    let mut registry = CODEX_RUNTIME_REGISTRY
+        .lock()
+        .map_err(|_| "codex runtime registry lock poisoned".to_string())?;
+    action(&mut registry).map_err(|error| error.to_string())
+}
+
 fn serve_stdio(repo_root: &Path) -> io::Result<()> {
     let stdin = io::stdin();
     let stdout = io::stdout();
@@ -219,11 +324,12 @@ fn serve_stdio(repo_root: &Path) -> io::Result<()> {
 }
 
 fn handle_stdio_request(line: &str, repo_root: &Path) -> String {
-    let operation = match serde_json::from_str::<StdioRequest>(line) {
-        Ok(StdioRequest::Operation { operation }) => operation,
-        Ok(StdioRequest::LegacyQuery { query }) => query,
+    let request = match serde_json::from_str::<StdioRequest>(line) {
+        Ok(request) => request,
         Err(error) => return serialize_error(format!("invalid request: {error}")),
     };
+
+    let operation = request.operation.or(request.query).unwrap_or_default();
 
     match operation.as_str() {
         "session-list" => match session_list_json(repo_root, false) {
@@ -233,6 +339,24 @@ fn handle_stdio_request(line: &str, repo_root: &Path) -> String {
         "codex-start-session" => match codex_start_session_json(repo_root, false) {
             Ok(payload) => payload,
             Err(message) => serialize_error(message),
+        },
+        "codex-read-transcript" => match request.session_id.as_deref() {
+            Some(session_id) => match codex_read_transcript_json(repo_root, session_id, false) {
+                Ok(payload) => payload,
+                Err(message) => serialize_error(message),
+            },
+            None => serialize_error("missing sessionId".to_string()),
+        },
+        "codex-submit-turn" => match (request.session_id.as_deref(), request.input_text.as_deref())
+        {
+            (Some(session_id), Some(input_text)) => {
+                match codex_submit_turn_json(repo_root, session_id, input_text, false) {
+                    Ok(payload) => payload,
+                    Err(message) => serialize_error(message),
+                }
+            }
+            (None, _) => serialize_error("missing sessionId".to_string()),
+            (_, None) => serialize_error("missing inputText".to_string()),
         },
         other => serialize_error(format!("unsupported operation: {other}")),
     }
@@ -293,7 +417,10 @@ mod tests {
             capabilities: provider_domain::CodexCapabilitySnapshot {
                 initialize: true,
                 thread_start: true,
+                thread_resume: true,
                 notification_suppression: true,
+                turn_start: true,
+                thread_read: true,
             },
             thread_id: "thread-abc12345".to_string(),
             cwd: temp.path().display().to_string(),
@@ -309,7 +436,25 @@ mod tests {
         let session = map_bootstrap_to_session(temp.path(), &bootstrap);
         assert_eq!(session.id, bootstrap.thread_id);
         assert_eq!(session.provider, "Codex");
-        assert_eq!(session.status, "idle");
+        assert_eq!(session.status, "needs_first_turn");
         assert!(session.title.contains("thread-a"));
+    }
+
+    #[test]
+    fn maps_transcript_preview_to_session_title() {
+        let temp = tempdir().expect("temp dir should exist");
+        let transcript = provider_domain::CodexTranscriptSnapshot {
+            kind: "codex_transcript_snapshot".to_string(),
+            thread_id: "thread-abc12345".to_string(),
+            preview: "Reply with exactly OK.".to_string(),
+            thread_status: "idle".to_string(),
+            turn_count: 1,
+            last_turn_status: Some("completed".to_string()),
+            items: vec![],
+        };
+
+        let session = map_transcript_to_session(temp.path(), &transcript.thread_id, &transcript);
+        assert_eq!(session.title, "Reply with exactly OK.");
+        assert_eq!(session.status, "idle");
     }
 }

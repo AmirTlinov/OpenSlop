@@ -27,5 +27,8 @@ public struct DaemonCodexInitializeSummary: Codable, Equatable, Sendable {
 public struct DaemonCodexCapabilitySnapshot: Codable, Equatable, Sendable {
     public let initialize: Bool
     public let threadStart: Bool
+    public let threadResume: Bool
     public let notificationSuppression: Bool
+    public let turnStart: Bool
+    public let threadRead: Bool
 }

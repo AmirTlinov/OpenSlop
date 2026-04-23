@@ -9,14 +9,14 @@ struct TimelineItemSeed: Identifiable, Hashable {
         case verify = "Verify"
     }
 
-    let id: UUID
+    let id: String
     let kind: Kind
     let title: String
     let detail: String
 }
 
 struct InspectorCardSeed: Identifiable, Hashable {
-    let id: UUID
+    let id: String
     let title: String
     let value: String
 }
@@ -27,26 +27,38 @@ struct WorkbenchSeed {
     func timeline(
         for session: DaemonSessionSummary?,
         loadSummary: String,
-        bootstrapSummary: String
+        transcriptSummary: String,
+        transcript: DaemonCodexTranscript?
     ) -> [TimelineItemSeed] {
-        [
+        if let transcript, !transcript.items.isEmpty {
+            return transcript.items.map { item in
+                TimelineItemSeed(
+                    id: item.id,
+                    kind: timelineKind(for: item.kind),
+                    title: item.title,
+                    detail: item.text.isEmpty ? item.turnStatus : item.text
+                )
+            }
+        }
+
+        return [
             TimelineItemSeed(
-                id: UUID(),
+                id: "projection",
                 kind: .agent,
                 title: "Session projection loaded from daemon",
                 detail: loadSummary
             ),
             TimelineItemSeed(
-                id: UUID(),
+                id: "transcript",
                 kind: .tool,
-                title: "core-daemon -> codex app-server -> thread/start",
-                detail: bootstrapSummary
+                title: "Read-only transcript lane",
+                detail: transcriptSummary
             ),
             TimelineItemSeed(
-                id: UUID(),
+                id: "proof-target",
                 kind: .verify,
-                title: "S03 first proof target",
-                detail: session.map { "Выбрана materialized session: \($0.title) [\($0.provider)]" } ?? "Ожидаем или не можем получить session list."
+                title: "S04 first proof target",
+                detail: session.map { "Выбрана session: \($0.title) [\($0.provider)]" } ?? "Ожидаем или не можем получить session list."
             ),
         ]
     }
@@ -55,16 +67,29 @@ struct WorkbenchSeed {
         projectionKind: String,
         sessionsCount: Int,
         selectedSession: DaemonSessionSummary?,
-        lastBootstrap: DaemonCodexSessionBootstrap?
+        transcript: DaemonCodexTranscript?
     ) -> [InspectorCardSeed] {
         [
-            InspectorCardSeed(id: UUID(), title: "Projection", value: projectionKind),
-            InspectorCardSeed(id: UUID(), title: "Sessions", value: "\(sessionsCount)"),
-            InspectorCardSeed(id: UUID(), title: "Provider", value: selectedSession?.provider ?? "—"),
-            InspectorCardSeed(id: UUID(), title: "Branch", value: selectedSession?.branch ?? "—"),
-            InspectorCardSeed(id: UUID(), title: "Codex model", value: lastBootstrap?.model ?? "ещё не запускали"),
-            InspectorCardSeed(id: UUID(), title: "Thread", value: lastBootstrap?.providerThreadId ?? "—"),
-            InspectorCardSeed(id: UUID(), title: "CLI", value: lastBootstrap?.cliVersion ?? "—"),
+            InspectorCardSeed(id: "projection", title: "Projection", value: projectionKind),
+            InspectorCardSeed(id: "sessions", title: "Sessions", value: "\(sessionsCount)"),
+            InspectorCardSeed(id: "provider", title: "Provider", value: selectedSession?.provider ?? "—"),
+            InspectorCardSeed(id: "branch", title: "Branch", value: selectedSession?.branch ?? "—"),
+            InspectorCardSeed(id: "thread", title: "Thread", value: transcript?.threadId ?? selectedSession?.id ?? "—"),
+            InspectorCardSeed(id: "turns", title: "Turns", value: transcript.map { "\($0.turnCount)" } ?? "0"),
+            InspectorCardSeed(id: "last-turn", title: "Last turn", value: transcript?.lastTurnStatus ?? "—"),
         ]
+    }
+
+    private func timelineKind(for rawKind: String) -> TimelineItemSeed.Kind {
+        switch rawKind {
+        case "user":
+            return .user
+        case "agent":
+            return .agent
+        case "tool":
+            return .tool
+        default:
+            return .verify
+        }
     }
 }
