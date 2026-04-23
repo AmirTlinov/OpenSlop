@@ -14,4 +14,5 @@
 - [x] Добавить raw witness для live `item/commandExecution/terminalInteraction`, чтобы отделить upstream truth от текущего provider/core-daemon/gui gap.
 - [x] Протянуть raw live `item/commandExecution/terminalInteraction` через provider/core-daemon/Swift как `terminalStdin` у существующего `command` item без PTY claims.
 - [x] Добавить live probe, который доказывает passthrough до final streamed transcript и отсутствие `terminalStdin` в ordinary readback.
+- [x] Materialize первый read-only/live-only terminal pane в native inspector поверх streamed transcript contour.
 - [x] Обновить slice docs, AGENTS карты и pinned schema subset.

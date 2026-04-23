@@ -14,6 +14,7 @@ macos-app
    │  ├─ CodexTranscriptSnapshot.swift
    │  ├─ CodexApprovalRequest.swift
    │  ├─ CodexCommandExec.swift
+   │  ├─ CodexTerminalSurface.swift
    │  ├─ RepoRootLocator.swift
    │  └─ CoreDaemonClient.swift
    ├─ OpenSlopApp/
@@ -21,6 +22,7 @@ macos-app
    │  ├─ WorkbenchSeed.swift
    │  ├─ WorkbenchRootView.swift
    │  ├─ ApprovalSheetView.swift
+   │  ├─ TerminalPaneView.swift
    │  ├─ SidebarPanelView.swift
    │  ├─ TimelinePanelView.swift
    │  ├─ InspectorPanelView.swift
@@ -34,6 +36,8 @@ macos-app
    ├─ OpenSlopTurnProbe/
    │  └─ main.swift
    ├─ OpenSlopTerminalInteractionProbe/
+   │  └─ main.swift
+   ├─ OpenSlopTerminalSurfaceProbe/
    │  └─ main.swift
    ├─ OpenSlopCommandExecProbe/
    │  └─ main.swift
@@ -52,3 +56,5 @@ macos-app
 - `WorkbenchCore` теперь держит и standalone `command/exec` DTO + client methods для buffered и streaming proof lane.
 - `OpenSlopCommandExecProbe` доказывает отдельный contour: buffered final stdout/stderr, streaming output events с client-supplied `processId` и пустой final `stdout/stderr` после streaming.
 - `OpenSlopCommandExecControlProbe` доказывает следующий law: one same-connection streaming exec принимает follow-up `write`, echo'ит `PING`, потом завершается через follow-up `terminate`.
+- `WorkbenchCore/CodexTerminalSurface.swift` materialize'ит первый read-only/live-only terminal surface только из streamed transcript, когда есть `processId` и raw `terminalStdin`.
+- `TerminalPaneView` показывает этот surface в inspector как честный live-only pane без stdin control, resize и reconnect claims.

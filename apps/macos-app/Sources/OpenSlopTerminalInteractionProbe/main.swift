@@ -13,8 +13,8 @@ struct OpenSlopTerminalInteractionProbe {
     static func main() async {
         let client = CoreDaemonClient()
 
-        do {
-            for attempt in 1...3 {
+        for attempt in 1...3 {
+            do {
                 let recorder = StreamRecorder()
                 let bootstrap = try await client.startCodexSession()
                 let transcript = try await client.streamCodexTurn(
@@ -96,14 +96,19 @@ struct OpenSlopTerminalInteractionProbe {
                 }
 
                 return
-            }
+            } catch {
+                if isRetryableReadbackFailure(error) {
+                    print("attempt=\(attempt) retryable_error=\(error.localizedDescription)")
+                    continue
+                }
 
-            fputs("OpenSlopTerminalInteractionProbe failed: no live terminalInteraction arrived in 3 attempts.\n", stderr)
-            exit(EXIT_FAILURE)
-        } catch {
-            fputs("OpenSlopTerminalInteractionProbe failed: \(error.localizedDescription)\n", stderr)
-            exit(EXIT_FAILURE)
+                fputs("OpenSlopTerminalInteractionProbe failed: \(error.localizedDescription)\n", stderr)
+                exit(EXIT_FAILURE)
+            }
         }
+
+        fputs("OpenSlopTerminalInteractionProbe failed: no live terminalInteraction arrived in 3 attempts.\n", stderr)
+        exit(EXIT_FAILURE)
     }
 
     private static func escapeRaw(_ value: String) -> String {
@@ -130,6 +135,13 @@ struct OpenSlopTerminalInteractionProbe {
         }
         rendered += "\""
         return rendered
+    }
+
+    private static func isRetryableReadbackFailure(_ error: Error) -> Bool {
+        let message = error.localizedDescription
+        return message.contains("rollout at")
+            && message.contains("is empty")
+            && message.contains("failed to read thread")
     }
 }
 

@@ -1,0 +1,8 @@
+flowchart TD
+    A[Live streamed transcript snapshot] --> B{command item has processId and terminalStdin}
+    B -- no --> C[No terminal pane]
+    B -- yes --> D[WorkbenchCore projects DaemonCodexTerminalSurface]
+    D --> E[Inspector renders TerminalPaneView]
+    E --> F[Pane shows command, processId, stdin raw, output, exit]
+    A --> G[Ordinary readback without terminalStdin]
+    G --> C

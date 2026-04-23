@@ -16,6 +16,8 @@
 - streaming snapshots не превращают GUI в transport dump.
 - command activity читается отдельной карточкой с monospaced detail и вторичной meta-строкой для `PTY` / `exit`;
 - raw terminal passthrough показывается только как escaped secondary marker вроде `stdin raw "\n"` и не выглядит как человеческий prompt;
+- inspector теперь умеет показать отдельный live-only terminal pane и не ломает вторичную роль inspector;
+- terminal pane не содержит fake stdin controls, resize affordances и reconnect обещаний;
 - command output не смешивается с assistant prose в один bubble;
 - approval показывается как отдельный native sheet, а не как inline JSON или transport dump;
 - sheet даёт короткое решение: `Разрешить` / `Отклонить`, без псевдо-терминального шума.

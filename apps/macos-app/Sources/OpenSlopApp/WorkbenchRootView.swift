@@ -150,7 +150,8 @@ struct WorkbenchRootView: View {
                             selectedSession: selectedSession,
                             transcript: transcript,
                             pendingApproval: pendingApproval
-                        )
+                        ),
+                        terminalSurface: DaemonCodexTerminalSurfaceProjector.liveSurface(from: transcript)
                     )
                     .frame(minWidth: 280, idealWidth: 320, maxWidth: 360)
                 }

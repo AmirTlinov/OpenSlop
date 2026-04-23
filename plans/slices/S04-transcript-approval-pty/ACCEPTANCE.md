@@ -16,5 +16,8 @@
 - `provider-domain` умеет приклеить raw `item/commandExecution/terminalInteraction` к уже существующему `command` item как optional `terminalStdin`, не смешивая его с `aggregatedOutput`.
 - Swift transcript model и command card умеют показать этот сигнал как escaped raw marker, не выдавая его за user-friendly terminal prompt.
 - `OpenSlopTerminalInteractionProbe` доказывает end-to-end: хотя бы один in-progress streamed snapshot и final streamed transcript держат `terminalStdin`, ordinary readback не держит `terminalStdin`, а live passthrough остаётся строго read-only.
+- `WorkbenchCore` умеет materialize'ить отдельный read-only/live-only terminal surface из streamed transcript только при наличии `processId` и `terminalStdin`.
+- native inspector умеет показать terminal pane отдельно от command card, не выдавая его за interactive terminal.
+- `OpenSlopTerminalSurfaceProbe` доказывает end-to-end: streamed transcript materialize'ит terminal surface, final streamed transcript тоже, ordinary readback — нет.
 - Текущий live approval proof опирается на turn-level override `approvalPolicy = untrusted` + `sandboxPolicy = readOnly`, потому что default session policy на этой машине возвращает `dangerFullAccess` и сама по себе approval не поднимает.
 - Exact schema subset для текущего protocol surface лежит в `domains/provider/contracts/`.

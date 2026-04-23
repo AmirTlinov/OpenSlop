@@ -10,7 +10,7 @@
 - apps/macos-app
 
 ## Out of scope
-- PTY и `command/exec`
+- interactive PTY control, standalone `command/exec` и virtualization
 - virtualized rendering и scale-polish
 - Claude parity
 
@@ -42,3 +42,7 @@
   - UI показывает escaped marker вроде `stdin raw "\n"` как вторичный detail, не как prompt;
   - ordinary readback не объявляется truth surface для этого сигнала;
   - в текущем live proof ordinary readback вернул `readback_command_items=0`, поэтому persistence claims здесь сознательно не делаются.
+- Следующий product step поверх этого же contour теперь уже materialized отдельно:
+  - native inspector умеет показать read-only/live-only terminal pane;
+  - pane держится только на streamed transcript с `processId` + `terminalStdin`;
+  - pane не притворяется interactive stdin/write/resize/reconnect surface.

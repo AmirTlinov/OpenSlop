@@ -1,7 +1,9 @@
 import SwiftUI
+import WorkbenchCore
 
 struct InspectorPanelView: View {
     let cards: [InspectorCardSeed]
+    let terminalSurface: DaemonCodexTerminalSurface?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -24,6 +26,10 @@ struct InspectorPanelView: View {
                         .padding(14)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
+                    }
+
+                    if let terminalSurface {
+                        TerminalPaneView(surface: terminalSurface)
                     }
                 }
                 .padding(16)
