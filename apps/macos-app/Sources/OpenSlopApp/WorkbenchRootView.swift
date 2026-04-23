@@ -46,6 +46,7 @@ private enum TranscriptState {
     case loading
     case loaded(summary: String)
     case streaming(summary: String)
+    case awaitingApproval(summary: String)
     case submitting
     case unavailable(message: String)
     case failed(message: String)
@@ -59,6 +60,8 @@ private enum TranscriptState {
         case .loaded(let summary):
             return summary
         case .streaming(let summary):
+            return summary
+        case .awaitingApproval(let summary):
             return summary
         case .submitting:
             return "Запускаем live turn и ждём первые streaming snapshot’ы."
@@ -84,6 +87,8 @@ struct WorkbenchRootView: View {
     @State private var transcriptState: TranscriptState = .idle
     @State private var lastBootstrap: DaemonCodexSessionBootstrap?
     @State private var transcript: DaemonCodexTranscript?
+    @State private var pendingApproval: DaemonCodexApprovalRequest?
+    @State private var approvalContinuation: CheckedContinuation<DaemonCodexApprovalDecision, Never>?
 
     private var selectedSession: DaemonSessionSummary? {
         sessions.first(where: { $0.id == selectedSessionID }) ?? sessions.first
@@ -107,7 +112,7 @@ struct WorkbenchRootView: View {
 
     private var isTurnStreaming: Bool {
         switch transcriptState {
-        case .submitting, .streaming:
+        case .submitting, .streaming, .awaitingApproval:
             return true
         default:
             return false
@@ -132,7 +137,8 @@ struct WorkbenchRootView: View {
                             for: selectedSession,
                             loadSummary: loadState.summary,
                             transcriptSummary: transcriptState.summary,
-                            transcript: transcript
+                            transcript: transcript,
+                            pendingApproval: pendingApproval
                         )
                     )
                     .frame(minWidth: 720)
@@ -142,7 +148,8 @@ struct WorkbenchRootView: View {
                             projectionKind: projectionKind,
                             sessionsCount: sessions.count,
                             selectedSession: selectedSession,
-                            transcript: transcript
+                            transcript: transcript,
+                            pendingApproval: pendingApproval
                         )
                     )
                     .frame(minWidth: 280, idealWidth: 320, maxWidth: 360)
@@ -184,6 +191,14 @@ struct WorkbenchRootView: View {
         }
         .task(id: selectedSessionID) {
             await loadTranscriptForSelection(force: true)
+        }
+        .sheet(item: $pendingApproval) { approval in
+            ApprovalSheetView(
+                approval: approval,
+                onApprove: { resolvePendingApproval(.accept) },
+                onDeny: { resolvePendingApproval(.cancel) }
+            )
+            .interactiveDismissDisabled(true)
         }
     }
 
@@ -283,11 +298,18 @@ struct WorkbenchRootView: View {
                     transcript = streamedSnapshot
                     transcriptState = .streaming(summary: transcriptSummary(for: streamedSnapshot))
                 }
+            } onApprovalRequest: { approval in
+                await MainActor.run {
+                    transcriptState = .awaitingApproval(summary: approvalSummary(for: approval))
+                }
+                return await awaitApprovalDecision(for: approval)
             }
             transcript = snapshot
+            pendingApproval = nil
             transcriptState = .loaded(summary: transcriptSummary(for: snapshot))
             await loadSessions(force: true, preferredSessionID: selectedSession.id)
         } catch {
+            pendingApproval = nil
             transcriptState = transcriptUnavailableState(for: error)
         }
     }
@@ -304,6 +326,34 @@ struct WorkbenchRootView: View {
         let agentCount = snapshot.items.filter { $0.kind == "agent" }.count
         let toolCount = snapshot.items.filter { $0.kind == "tool" }.count
         return "thread=\(snapshot.threadId) status=\(snapshot.threadStatus) turns=\(snapshot.turnCount) last=\(snapshot.lastTurnStatus ?? "—") agent=\(agentCount) tool=\(toolCount)"
+    }
+
+    @MainActor
+    private func awaitApprovalDecision(for approval: DaemonCodexApprovalRequest) async -> DaemonCodexApprovalDecision {
+        pendingApproval = approval
+        return await withCheckedContinuation { continuation in
+            approvalContinuation = continuation
+        }
+    }
+
+    @MainActor
+    private func resolvePendingApproval(_ decision: DaemonCodexApprovalDecision) {
+        let continuation = approvalContinuation
+        approvalContinuation = nil
+        pendingApproval = nil
+        transcriptState = .streaming(summary: decision == .accept ? "Approval отправлен. Ждём продолжение turn." : "Approval отклонён. Ждём terminal snapshot.")
+        continuation?.resume(returning: decision)
+    }
+
+    private func approvalSummary(for approval: DaemonCodexApprovalRequest) -> String {
+        switch approval.kind {
+        case "commandExecution":
+            return "Codex ждёт approve/deny для команды: \(approval.command ?? approval.itemId)"
+        case "fileChange":
+            return "Codex ждёт approve/deny для изменения файлов: \(approval.grantRoot ?? approval.reason ?? approval.itemId)"
+        default:
+            return "Codex ждёт approve/deny для действия: \(approval.itemId)"
+        }
     }
 
     private func transcriptUnavailableState(for error: Error) -> TranscriptState {

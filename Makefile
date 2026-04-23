@@ -2,7 +2,7 @@ PYTHON ?= python3
 SWIFT ?= swift
 CARGO ?= cargo
 
-.PHONY: doctor repo-lint daemon-build daemon-heartbeat daemon-query-session-list daemon-start-codex-session daemon-read-codex-transcript daemon-submit-codex-turn daemon-reset-session-store daemon-upsert-proof-session daemon-print-session-store-path macos-build probe-session-list probe-codex-session probe-codex-turn smoke smoke-codex-session smoke-codex-turn
+.PHONY: doctor repo-lint daemon-build daemon-heartbeat daemon-query-session-list daemon-start-codex-session daemon-read-codex-transcript daemon-submit-codex-turn daemon-reset-session-store daemon-upsert-proof-session daemon-print-session-store-path macos-build probe-session-list probe-codex-session probe-codex-turn probe-codex-approval smoke smoke-codex-session smoke-codex-turn smoke-codex-approval
 
 doctor: repo-lint
 
@@ -48,8 +48,13 @@ probe-codex-session: daemon-build
 probe-codex-turn: daemon-build
 	$(SWIFT) run --package-path apps/macos-app OpenSlopTurnProbe
 
+probe-codex-approval: daemon-build
+	$(SWIFT) run --package-path apps/macos-app OpenSlopApprovalProbe
+
 smoke: doctor daemon-reset-session-store daemon-upsert-proof-session daemon-heartbeat daemon-query-session-list macos-build probe-session-list
 
 smoke-codex-session: doctor daemon-build macos-build probe-codex-session
 
 smoke-codex-turn: doctor daemon-build macos-build probe-codex-turn
+
+smoke-codex-approval: doctor daemon-build macos-build probe-codex-approval

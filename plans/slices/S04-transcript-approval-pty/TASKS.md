@@ -6,4 +6,7 @@
 - [x] Протянуть `thread/read`, `thread/resume`, `turn/start` в provider/core-daemon/gui path.
 - [x] Разрезать blocking submit на streaming successive snapshots и terminal snapshot.
 - [x] Добавить live probe и cold-read proof для transcript lane.
+- [x] Протянуть server-initiated approval request lane из `codex app-server` в provider/core-daemon/SwiftUI.
+- [x] Сделать minimal native approval sheet с `Разрешить` / `Отклонить`.
+- [x] Добавить live approval proof для `commandExecution/requestApproval`.
 - [x] Обновить slice docs, AGENTS карты и pinned schema subset.

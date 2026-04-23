@@ -32,11 +32,21 @@ struct CoreDaemonRequest: Codable, Sendable {
     let operation: String
     let sessionId: String?
     let inputText: String?
+    let approvalId: String?
+    let approvalDecision: String?
 
-    init(operation: String, sessionId: String? = nil, inputText: String? = nil) {
+    init(
+        operation: String,
+        sessionId: String? = nil,
+        inputText: String? = nil,
+        approvalId: String? = nil,
+        approvalDecision: String? = nil
+    ) {
         self.operation = operation
         self.sessionId = sessionId
         self.inputText = inputText
+        self.approvalId = approvalId
+        self.approvalDecision = approvalDecision
     }
 }
 

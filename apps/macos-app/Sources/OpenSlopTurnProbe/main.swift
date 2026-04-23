@@ -17,11 +17,15 @@ struct OpenSlopTurnProbe {
                 inputText: "Reply with exactly OK."
             ) { snapshot in
                 await recorder.record(snapshot)
+            } onApprovalRequest: { approval in
+                await recorder.recordUnexpectedApproval(approval)
+                return .cancel
             }
             let readback = try await client.fetchCodexTranscript(sessionId: bootstrap.session.id)
             let finalPID = try await client.daemonProcessIdentifier()
             let coldReadback = try readColdTranscript(repoRoot: repoRoot, sessionId: bootstrap.session.id)
             let streamedSnapshots = await recorder.snapshots()
+            let unexpectedApprovals = await recorder.unexpectedApprovals()
 
             let daemonReused = bootstrapPID == finalPID
             let containsUserPrompt = readback.items.contains { $0.kind == "user" && $0.text.contains("Reply with exactly OK.") }
@@ -35,6 +39,7 @@ struct OpenSlopTurnProbe {
             print("contains_user_prompt=\(containsUserPrompt) contains_agent_ok=\(containsAgentOK)")
             print("submit_snapshot_items=\(transcript.items.count) readback_items=\(readback.items.count)")
             print("streamed_snapshots=\(streamedSnapshots.count) saw_streaming_progress=\(sawStreamingProgress)")
+            print("unexpected_approvals=\(unexpectedApprovals.count)")
             print("cold_read_status=\(coldReadback.threadStatus) cold_read_turns=\(coldReadback.turnCount) cold_contains_user_prompt=\(coldReadContainsUserPrompt) cold_contains_agent_ok=\(coldReadContainsAgentOK)")
 
             guard daemonReused else {
@@ -54,6 +59,11 @@ struct OpenSlopTurnProbe {
 
             guard sawStreamingProgress else {
                 fputs("OpenSlopTurnProbe failed: no in-progress transcript snapshot arrived during streaming turn.\n", stderr)
+                exit(EXIT_FAILURE)
+            }
+
+            guard unexpectedApprovals.isEmpty else {
+                fputs("OpenSlopTurnProbe failed: unexpected approval was requested during plain OK turn.\n", stderr)
                 exit(EXIT_FAILURE)
             }
 
@@ -95,6 +105,7 @@ struct OpenSlopTurnProbe {
 
 private actor StreamRecorder {
     private var values: [DaemonCodexTranscript] = []
+    private var approvals: [DaemonCodexApprovalRequest] = []
 
     func record(_ snapshot: DaemonCodexTranscript) {
         values.append(snapshot)
@@ -102,6 +113,14 @@ private actor StreamRecorder {
 
     func snapshots() -> [DaemonCodexTranscript] {
         values
+    }
+
+    func recordUnexpectedApproval(_ approval: DaemonCodexApprovalRequest) {
+        approvals.append(approval)
+    }
+
+    func unexpectedApprovals() -> [DaemonCodexApprovalRequest] {
+        approvals
     }
 }
 

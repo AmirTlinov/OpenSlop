@@ -12,12 +12,14 @@ macos-app
    │  ├─ SessionProjection.swift
    │  ├─ CodexSessionBootstrap.swift
    │  ├─ CodexTranscriptSnapshot.swift
+   │  ├─ CodexApprovalRequest.swift
    │  ├─ RepoRootLocator.swift
    │  └─ CoreDaemonClient.swift
    ├─ OpenSlopApp/
    │  ├─ OpenSlopApp.swift
    │  ├─ WorkbenchSeed.swift
    │  ├─ WorkbenchRootView.swift
+   │  ├─ ApprovalSheetView.swift
    │  ├─ SidebarPanelView.swift
    │  ├─ TimelinePanelView.swift
    │  ├─ InspectorPanelView.swift
@@ -25,6 +27,8 @@ macos-app
    ├─ OpenSlopProbe/
    │  └─ main.swift
    ├─ OpenSlopCodexProbe/
+   │  └─ main.swift
+   ├─ OpenSlopApprovalProbe/
    │  └─ main.swift
    └─ OpenSlopTurnProbe/
       └─ main.swift
@@ -34,5 +38,6 @@ macos-app
 
 Текущий реальный proof target для S04:
 - `WorkbenchCore/CoreDaemonClient.swift` держит long-lived stdio transport к `core-daemon --serve-stdio`.
-- `WorkbenchRootView` отправляет live turn, получает successive daemon-owned transcript snapshots и не владеет runtime truth.
+- `WorkbenchRootView` отправляет live turn, получает successive daemon-owned transcript snapshots, показывает native approval sheet и не владеет runtime truth.
 - `OpenSlopTurnProbe` доказывает reuse daemon PID, streaming progress и наличие user/agent transcript items после completed turn.
+- `OpenSlopApprovalProbe` доказывает live `commandExecution` approval request и completed turn после approve.

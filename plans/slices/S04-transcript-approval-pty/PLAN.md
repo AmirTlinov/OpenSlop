@@ -1,7 +1,7 @@
-# S04-transcript-approval-pty — First live turn streaming lane
+# S04-transcript-approval-pty — Streaming transcript + native approval lane
 
 ## Outcome
-Сделать следующий честный runtime path после bootstrap: пользователь отправляет prompt в живую Codex session, `core-daemon` доводит turn до terminal state и GUI получает daemon-owned successive transcript snapshots во время активного turn.
+Сделать следующий честный runtime path после bootstrap: пользователь отправляет prompt в живую Codex session, `core-daemon` доводит turn до terminal state, GUI получает daemon-owned successive transcript snapshots во время активного turn и умеет ответить на живой Codex approval request через native sheet.
 
 ## Touches
 - domains/provider
@@ -10,7 +10,6 @@
 - apps/macos-app
 
 ## Out of scope
-- approvals
 - PTY и `command/exec`
 - virtualized rendering и scale-polish
 - Claude parity
@@ -22,4 +21,9 @@
 - После первого завершённого turn cold `thread/read` разрешён и может вернуть архивный `thread.status.type = notLoaded`.
 - Перед новым интерактивным turn на cold thread нужен `thread/resume`.
 - Текущий streaming contour делается через daemon-owned polling successive `thread/read` snapshots, не через push token-deltas и не через GUI-owned polling.
-- Checked-in schema subset расширен только до `thread/read`, `thread/resume` и `turn/start`.
+- Текущий approval contour делается через server-initiated JSON-RPC request lane. `core-daemon` во время активного streaming turn пишет approval event наружу и ждёт решение по тому же stdio transport.
+- Для живого proof approval-enabled turn идёт через turn-level override:
+  - `approvalPolicy = "untrusted"`
+  - `approvalsReviewer = "user"`
+  - `sandboxPolicy = { "type": "readOnly" }`
+- В текущем sub-slice закрыт `commandExecution/requestApproval` и совместимый minimal mapping для `fileChange/requestApproval`. `permissions/requestApproval` пока вне scope.

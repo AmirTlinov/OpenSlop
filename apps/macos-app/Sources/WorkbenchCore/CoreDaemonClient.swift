@@ -54,12 +54,14 @@ public struct CoreDaemonClient: Sendable {
     public func streamCodexTurn(
         sessionId: String,
         inputText: String,
-        onSnapshot: @escaping @Sendable (DaemonCodexTranscript) async -> Void
+        onSnapshot: @escaping @Sendable (DaemonCodexTranscript) async -> Void,
+        onApprovalRequest: @escaping @Sendable (DaemonCodexApprovalRequest) async -> DaemonCodexApprovalDecision
     ) async throws -> DaemonCodexTranscript {
         try await SharedCoreDaemonTransport.instance.streamCodexTurn(
             sessionId: sessionId,
             inputText: inputText,
-            onSnapshot: onSnapshot
+            onSnapshot: onSnapshot,
+            onApprovalRequest: onApprovalRequest
         )
     }
 
@@ -112,7 +114,8 @@ private actor CoreDaemonTransport {
     func streamCodexTurn(
         sessionId: String,
         inputText: String,
-        onSnapshot: @escaping @Sendable (DaemonCodexTranscript) async -> Void
+        onSnapshot: @escaping @Sendable (DaemonCodexTranscript) async -> Void,
+        onApprovalRequest: @escaping @Sendable (DaemonCodexApprovalRequest) async -> DaemonCodexApprovalDecision
     ) async throws -> DaemonCodexTranscript {
         try ensureRunning()
         try sendRaw(
@@ -130,6 +133,21 @@ private actor CoreDaemonTransport {
                streamEvent.kind == "codex_transcript_stream_event"
             {
                 await onSnapshot(streamEvent.snapshot)
+                continue
+            }
+
+            if let approvalEvent = try? JSONDecoder().decode(DaemonCodexApprovalRequestEvent.self, from: response),
+               approvalEvent.kind == "codex_approval_request"
+            {
+                let decision = await onApprovalRequest(approvalEvent.approval)
+                try sendRaw(
+                    request: CoreDaemonRequest(
+                        operation: "codex-resolve-approval",
+                        sessionId: approvalEvent.sessionId,
+                        approvalId: approvalEvent.approval.approvalId,
+                        approvalDecision: decision.rawValue
+                    )
+                )
                 continue
             }
 

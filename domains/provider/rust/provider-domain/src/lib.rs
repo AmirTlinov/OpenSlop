@@ -79,6 +79,27 @@ pub struct CodexTranscriptEntry {
     pub turn_status: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexApprovalRequest {
+    pub kind: String,
+    pub approval_id: String,
+    pub thread_id: String,
+    pub turn_id: String,
+    pub item_id: String,
+    pub command: Option<String>,
+    pub cwd: Option<String>,
+    pub reason: Option<String>,
+    pub grant_root: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CodexApprovalDecision {
+    Accept,
+    Cancel,
+}
+
 pub struct CodexRuntimeRegistry {
     binary: PathBuf,
     sessions: HashMap<String, CodexAppServerProcess>,
@@ -108,6 +129,12 @@ pub enum CodexRuntimeError {
     },
     ThreadNeedsLiveRuntime {
         thread_id: String,
+    },
+    ApprovalCallbackFailed {
+        message: String,
+    },
+    UnsupportedServerRequest {
+        method: String,
     },
     StreamCallbackFailed {
         message: String,
@@ -165,6 +192,15 @@ impl Display for CodexRuntimeError {
                 write!(
                     f,
                     "thread {thread_id} ещё не materialized на диск; первый turn нужно завершить в том же живом daemon runtime, где session была создана"
+                )
+            }
+            CodexRuntimeError::ApprovalCallbackFailed { message } => {
+                write!(f, "не удалось получить решение по approval: {message}")
+            }
+            CodexRuntimeError::UnsupportedServerRequest { method } => {
+                write!(
+                    f,
+                    "codex app-server прислал пока не поддержанный server request: {method}"
                 )
             }
             CodexRuntimeError::StreamCallbackFailed { message } => {
@@ -306,6 +342,24 @@ impl CodexRuntimeRegistry {
         process.stream_turn(thread_id, input_text, on_snapshot)
     }
 
+    pub fn stream_turn_with_approvals<F, E, G, H>(
+        &mut self,
+        repo_root: &Path,
+        thread_id: &str,
+        input_text: &str,
+        on_snapshot: F,
+        on_approval: G,
+    ) -> Result<CodexTranscriptSnapshot, CodexRuntimeError>
+    where
+        F: FnMut(CodexTranscriptSnapshot) -> Result<(), E>,
+        E: Display,
+        G: FnMut(CodexApprovalRequest) -> Result<CodexApprovalDecision, H>,
+        H: Display,
+    {
+        let process = self.ensure_session_process(repo_root, thread_id)?;
+        process.stream_turn_with_approvals(thread_id, input_text, on_snapshot, on_approval)
+    }
+
     fn ensure_session_process(
         &mut self,
         repo_root: &Path,
@@ -445,6 +499,37 @@ struct CodexAppServerProcess {
     stderr_rx: Receiver<String>,
 }
 
+type ApprovalHandler<'a> =
+    dyn FnMut(CodexApprovalRequest) -> Result<CodexApprovalDecision, CodexRuntimeError> + 'a;
+
+enum ServerApprovalRequest {
+    CommandExecution { request: CodexApprovalRequest },
+    FileChange { request: CodexApprovalRequest },
+}
+
+impl ServerApprovalRequest {
+    fn request(&self) -> CodexApprovalRequest {
+        match self {
+            ServerApprovalRequest::CommandExecution { request }
+            | ServerApprovalRequest::FileChange { request } => request.clone(),
+        }
+    }
+
+    fn response_value(&self, decision: CodexApprovalDecision) -> Value {
+        let decision = match decision {
+            CodexApprovalDecision::Accept => "accept",
+            CodexApprovalDecision::Cancel => "cancel",
+        };
+
+        match self {
+            ServerApprovalRequest::CommandExecution { .. }
+            | ServerApprovalRequest::FileChange { .. } => json!({
+                "decision": decision
+            }),
+        }
+    }
+}
+
 impl CodexAppServerProcess {
     fn launch(repo_root: &Path, binary: &Path) -> Result<Self, CodexRuntimeError> {
         let mut child = Command::new(binary)
@@ -524,6 +609,16 @@ impl CodexAppServerProcess {
     }
 
     fn start_turn(&mut self, thread_id: &str, input_text: &str) -> Result<(), CodexRuntimeError> {
+        self.start_turn_with_options(thread_id, input_text, None, None)
+    }
+
+    fn start_turn_with_options(
+        &mut self,
+        thread_id: &str,
+        input_text: &str,
+        approval_policy: Option<&str>,
+        approval_handler: Option<&mut ApprovalHandler<'_>>,
+    ) -> Result<(), CodexRuntimeError> {
         let params = json!({
             "threadId": thread_id,
             "input": [
@@ -534,7 +629,17 @@ impl CodexAppServerProcess {
             ]
         });
 
-        self.request_value(3, "turn/start", &params).map(|_| ())
+        let mut params = params;
+        if let Some(approval_policy) = approval_policy {
+            params["approvalPolicy"] = Value::String(approval_policy.to_string());
+            params["approvalsReviewer"] = Value::String("user".to_string());
+            params["sandboxPolicy"] = json!({
+                "type": "readOnly"
+            });
+        }
+
+        self.request_value(3, "turn/start", &params, approval_handler)
+            .map(|_| ())
     }
 
     fn resume_thread(&mut self, thread_id: &str) -> Result<(), CodexRuntimeError> {
@@ -542,7 +647,7 @@ impl CodexAppServerProcess {
             "threadId": thread_id
         });
 
-        match self.request_value(3, "thread/resume", &params) {
+        match self.request_value(3, "thread/resume", &params, None) {
             Ok(_) => Ok(()),
             Err(CodexRuntimeError::ServerError {
                 code: _, message, ..
@@ -559,12 +664,32 @@ impl CodexAppServerProcess {
         &mut self,
         thread_id: &str,
     ) -> Result<CodexTranscriptSnapshot, CodexRuntimeError> {
-        match self.read_transcript_value(thread_id, true) {
+        self.read_transcript_with_handler(thread_id, None)
+    }
+
+    fn read_transcript_with_handler(
+        &mut self,
+        thread_id: &str,
+        mut approval_handler: Option<&mut ApprovalHandler<'_>>,
+    ) -> Result<CodexTranscriptSnapshot, CodexRuntimeError> {
+        match self.read_transcript_value(
+            thread_id,
+            true,
+            approval_handler
+                .as_mut()
+                .map(|handler| &mut **handler as &mut ApprovalHandler<'_>),
+        ) {
             Ok(value) => parse_transcript_snapshot(value),
             Err(CodexRuntimeError::ServerError { message, .. })
                 if is_materialization_gap_message(&message) =>
             {
-                let value = self.read_transcript_value(thread_id, false)?;
+                let value = self.read_transcript_value(
+                    thread_id,
+                    false,
+                    approval_handler
+                        .as_mut()
+                        .map(|handler| &mut **handler as &mut ApprovalHandler<'_>),
+                )?;
                 parse_transcript_snapshot(value)
             }
             Err(error) => Err(error),
@@ -575,7 +700,7 @@ impl CodexAppServerProcess {
         &mut self,
         thread_id: &str,
     ) -> Result<CodexTranscriptSnapshot, CodexRuntimeError> {
-        self.poll_transcript_until_terminal(thread_id, TURN_POLL_INTERVAL, None, |_| {
+        self.poll_transcript_until_terminal(thread_id, TURN_POLL_INTERVAL, None, None, |_| {
             Ok::<(), std::convert::Infallible>(())
         })
     }
@@ -584,6 +709,7 @@ impl CodexAppServerProcess {
         &mut self,
         thread_id: &str,
         include_turns: bool,
+        approval_handler: Option<&mut ApprovalHandler<'_>>,
     ) -> Result<Value, CodexRuntimeError> {
         let mut params = json!({
             "threadId": thread_id
@@ -593,7 +719,7 @@ impl CodexAppServerProcess {
             params["includeTurns"] = Value::Bool(true);
         }
 
-        self.request_value(4, "thread/read", &params)
+        self.request_value(4, "thread/read", &params, approval_handler)
     }
 
     fn stream_turn<F, E>(
@@ -608,7 +734,47 @@ impl CodexAppServerProcess {
     {
         let baseline = self.read_transcript(thread_id).ok();
         self.start_turn(thread_id, input_text)?;
-        self.poll_transcript_until_terminal(thread_id, STREAM_POLL_INTERVAL, baseline, on_snapshot)
+        self.poll_transcript_until_terminal(
+            thread_id,
+            STREAM_POLL_INTERVAL,
+            baseline,
+            None,
+            on_snapshot,
+        )
+    }
+
+    fn stream_turn_with_approvals<F, E, G, H>(
+        &mut self,
+        thread_id: &str,
+        input_text: &str,
+        on_snapshot: F,
+        mut on_approval: G,
+    ) -> Result<CodexTranscriptSnapshot, CodexRuntimeError>
+    where
+        F: FnMut(CodexTranscriptSnapshot) -> Result<(), E>,
+        E: Display,
+        G: FnMut(CodexApprovalRequest) -> Result<CodexApprovalDecision, H>,
+        H: Display,
+    {
+        let baseline = self.read_transcript(thread_id).ok();
+        let mut approval_handler = |request: CodexApprovalRequest| {
+            on_approval(request).map_err(|error| CodexRuntimeError::ApprovalCallbackFailed {
+                message: error.to_string(),
+            })
+        };
+        self.start_turn_with_options(
+            thread_id,
+            input_text,
+            Some("untrusted"),
+            Some(&mut approval_handler),
+        )?;
+        self.poll_transcript_until_terminal(
+            thread_id,
+            STREAM_POLL_INTERVAL,
+            baseline,
+            Some(&mut approval_handler),
+            on_snapshot,
+        )
     }
 
     fn poll_transcript_until_terminal<F, E>(
@@ -616,6 +782,7 @@ impl CodexAppServerProcess {
         thread_id: &str,
         poll_interval: Duration,
         mut last_snapshot: Option<CodexTranscriptSnapshot>,
+        mut approval_handler: Option<&mut ApprovalHandler<'_>>,
         mut on_snapshot: F,
     ) -> Result<CodexTranscriptSnapshot, CodexRuntimeError>
     where
@@ -632,7 +799,7 @@ impl CodexAppServerProcess {
                 });
             }
 
-            match self.read_transcript(thread_id) {
+            match self.read_transcript_with_handler(thread_id, approval_handler.as_deref_mut()) {
                 Ok(snapshot) => {
                     let changed = last_snapshot.as_ref() != Some(&snapshot);
                     if changed {
@@ -670,7 +837,7 @@ impl CodexAppServerProcess {
         P: Serialize,
         R: for<'de> Deserialize<'de>,
     {
-        let value = self.request_value(id, method, params)?;
+        let value = self.request_value(id, method, params, None)?;
         serde_json::from_value(value).map_err(CodexRuntimeError::Json)
     }
 
@@ -679,6 +846,7 @@ impl CodexAppServerProcess {
         id: u64,
         method: &str,
         params: &P,
+        mut approval_handler: Option<&mut ApprovalHandler<'_>>,
     ) -> Result<Value, CodexRuntimeError>
     where
         P: Serialize,
@@ -691,7 +859,7 @@ impl CodexAppServerProcess {
             .map_err(CodexRuntimeError::StdinWrite)?;
         self.stdin.flush().map_err(CodexRuntimeError::StdinWrite)?;
 
-        let deadline = Instant::now() + RESPONSE_TIMEOUT;
+        let mut deadline = Instant::now() + RESPONSE_TIMEOUT;
 
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
@@ -712,7 +880,27 @@ impl CodexAppServerProcess {
             })?;
 
             let message: Value = serde_json::from_str(&line)?;
-            if message.get("method").is_some() {
+            if let Some(server_method) = message.get("method").and_then(|value| value.as_str()) {
+                if let Some(server_request) =
+                    parse_server_approval_request(server_method, &message)?
+                {
+                    let response_id = message.get("id").cloned().ok_or_else(|| {
+                        CodexRuntimeError::InvalidResponse {
+                            method: method.to_string(),
+                            message: line.clone(),
+                        }
+                    })?;
+
+                    let approval_handler = approval_handler.as_deref_mut().ok_or_else(|| {
+                        CodexRuntimeError::UnsupportedServerRequest {
+                            method: server_method.to_string(),
+                        }
+                    })?;
+                    let decision = approval_handler(server_request.request())?;
+                    let response_value = server_request.response_value(decision);
+                    self.respond_to_server_request(response_id, response_value)?;
+                    deadline = Instant::now() + TURN_COMPLETION_TIMEOUT;
+                }
                 continue;
             }
 
@@ -762,6 +950,24 @@ impl CodexAppServerProcess {
         lines.join("\n")
     }
 
+    fn respond_to_server_request(
+        &mut self,
+        id: Value,
+        result: Value,
+    ) -> Result<(), CodexRuntimeError> {
+        let payload = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": result,
+        });
+        let mut line = serde_json::to_vec(&payload)?;
+        line.push(b'\n');
+        self.stdin
+            .write_all(&line)
+            .map_err(CodexRuntimeError::StdinWrite)?;
+        self.stdin.flush().map_err(CodexRuntimeError::StdinWrite)
+    }
+
     fn is_running(&mut self) -> bool {
         match self.child.try_wait() {
             Ok(None) => true,
@@ -797,6 +1003,75 @@ where
         }
     });
     rx
+}
+
+fn parse_server_approval_request(
+    method: &str,
+    message: &Value,
+) -> Result<Option<ServerApprovalRequest>, CodexRuntimeError> {
+    let Some(params) = message.get("params") else {
+        return Ok(None);
+    };
+
+    match method {
+        "item/commandExecution/requestApproval" => {
+            let thread_id = thread_string(params, "threadId")?;
+            let turn_id = thread_string(params, "turnId")?;
+            let item_id = thread_string(params, "itemId")?;
+            let approval_id = params
+                .get("approvalId")
+                .and_then(|value| value.as_str())
+                .unwrap_or(&item_id)
+                .to_string();
+            Ok(Some(ServerApprovalRequest::CommandExecution {
+                request: CodexApprovalRequest {
+                    kind: "commandExecution".to_string(),
+                    approval_id,
+                    thread_id,
+                    turn_id,
+                    item_id,
+                    command: params
+                        .get("command")
+                        .and_then(|value| value.as_str())
+                        .map(ToString::to_string),
+                    cwd: params
+                        .get("cwd")
+                        .and_then(|value| value.as_str())
+                        .map(ToString::to_string),
+                    reason: params
+                        .get("reason")
+                        .and_then(|value| value.as_str())
+                        .map(ToString::to_string),
+                    grant_root: None,
+                },
+            }))
+        }
+        "item/fileChange/requestApproval" => {
+            let thread_id = thread_string(params, "threadId")?;
+            let turn_id = thread_string(params, "turnId")?;
+            let item_id = thread_string(params, "itemId")?;
+            Ok(Some(ServerApprovalRequest::FileChange {
+                request: CodexApprovalRequest {
+                    kind: "fileChange".to_string(),
+                    approval_id: item_id.clone(),
+                    thread_id,
+                    turn_id,
+                    item_id,
+                    command: None,
+                    cwd: None,
+                    reason: params
+                        .get("reason")
+                        .and_then(|value| value.as_str())
+                        .map(ToString::to_string),
+                    grant_root: params
+                        .get("grantRoot")
+                        .and_then(|value| value.as_str())
+                        .map(ToString::to_string),
+                },
+            }))
+        }
+        _ => Ok(None),
+    }
 }
 
 fn parse_transcript_snapshot(value: Value) -> Result<CodexTranscriptSnapshot, CodexRuntimeError> {
@@ -1131,6 +1406,44 @@ mod tests {
             snapshot.last_turn_status.as_deref() == Some("inProgress")
                 || snapshot.thread_status == "active"
         }));
+    }
+
+    #[test]
+    fn parses_command_execution_approval_request() {
+        let message = json!({
+            "method": "item/commandExecution/requestApproval",
+            "id": 0,
+            "params": {
+                "threadId": "thread-123",
+                "turnId": "turn-123",
+                "itemId": "call-123",
+                "command": "/bin/zsh -lc 'python3 -c \"print(123)\"'",
+                "cwd": "/tmp/repo",
+                "reason": "Need approval to run command"
+            }
+        });
+
+        let parsed =
+            parse_server_approval_request("item/commandExecution/requestApproval", &message)
+                .expect("parse should succeed")
+                .expect("approval request should parse");
+
+        let request = parsed.request();
+        assert_eq!(request.kind, "commandExecution");
+        assert_eq!(request.approval_id, "call-123");
+        assert_eq!(request.thread_id, "thread-123");
+        assert_eq!(request.turn_id, "turn-123");
+        assert!(
+            request
+                .command
+                .as_deref()
+                .unwrap_or_default()
+                .contains("python3 -c")
+        );
+        assert_eq!(
+            parsed.response_value(CodexApprovalDecision::Accept),
+            json!({ "decision": "accept" })
+        );
     }
 
     #[test]

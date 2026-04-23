@@ -1,11 +1,13 @@
 use provider_domain::{
-    CodexRuntimeRegistry, CodexThreadBootstrap, read_codex_transcript, submit_codex_turn,
+    CodexApprovalDecision, CodexApprovalRequest, CodexRuntimeRegistry, CodexThreadBootstrap,
+    read_codex_transcript, submit_codex_turn,
 };
 use serde::{Deserialize, Serialize};
 use session_domain::{
     SessionSummary, load_persisted_session_projection, proof_session_id, reset_session_store,
     session_store_path, upsert_proof_session, upsert_runtime_session,
 };
+use std::cell::RefCell;
 use std::env;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -22,6 +24,8 @@ struct StdioRequest {
     query: Option<String>,
     session_id: Option<String>,
     input_text: Option<String>,
+    approval_id: Option<String>,
+    approval_decision: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -36,6 +40,14 @@ struct CodexTranscriptStreamEventResponse {
     kind: &'static str,
     session_id: String,
     snapshot: provider_domain::CodexTranscriptSnapshot,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CodexApprovalRequestEventResponse {
+    kind: &'static str,
+    session_id: String,
+    approval: CodexApprovalRequest,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -227,28 +239,143 @@ fn codex_submit_turn_stream_json(
     session_id: &str,
     input_text: &str,
     pretty: bool,
+    reader: &mut impl BufRead,
     writer: &mut impl Write,
 ) -> Result<String, String> {
     let mut registry = CODEX_RUNTIME_REGISTRY
         .lock()
         .map_err(|_| "codex runtime registry lock poisoned".to_string())?;
+    let bridge = RefCell::new(CodexTurnStreamBridge {
+        reader,
+        writer,
+        session_id: session_id.to_string(),
+    });
 
     let transcript = registry
-        .stream_turn(repo_root, session_id, input_text, |snapshot| {
-            let payload = serde_json::to_string(&CodexTranscriptStreamEventResponse {
-                kind: "codex_transcript_stream_event",
-                session_id: session_id.to_string(),
-                snapshot,
-            })
-            .map_err(|error| error.to_string())?;
-            writeln!(writer, "{payload}").map_err(|error| error.to_string())?;
-            writer.flush().map_err(|error| error.to_string())
-        })
+        .stream_turn_with_approvals(
+            repo_root,
+            session_id,
+            input_text,
+            |snapshot| bridge.borrow_mut().emit_snapshot(snapshot),
+            |approval| bridge.borrow_mut().wait_for_approval(&approval),
+        )
         .map_err(|error| error.to_string())?;
 
     let session = map_transcript_to_session(repo_root, session_id, &transcript);
     upsert_runtime_session(repo_root, &session).map_err(|error| error.to_string())?;
     serialize_payload(&transcript, pretty)
+}
+
+struct CodexTurnStreamBridge<'a, R: BufRead, W: Write> {
+    reader: &'a mut R,
+    writer: &'a mut W,
+    session_id: String,
+}
+
+impl<R: BufRead, W: Write> CodexTurnStreamBridge<'_, R, W> {
+    fn emit_snapshot(
+        &mut self,
+        snapshot: provider_domain::CodexTranscriptSnapshot,
+    ) -> Result<(), String> {
+        let payload = serde_json::to_string(&CodexTranscriptStreamEventResponse {
+            kind: "codex_transcript_stream_event",
+            session_id: self.session_id.clone(),
+            snapshot,
+        })
+        .map_err(|error| error.to_string())?;
+        writeln!(self.writer, "{payload}").map_err(|error| error.to_string())?;
+        self.writer.flush().map_err(|error| error.to_string())
+    }
+
+    fn wait_for_approval(
+        &mut self,
+        approval: &CodexApprovalRequest,
+    ) -> Result<CodexApprovalDecision, String> {
+        wait_for_approval_decision(self.reader, self.writer, &self.session_id, approval)
+    }
+}
+
+fn wait_for_approval_decision(
+    reader: &mut impl BufRead,
+    writer: &mut impl Write,
+    session_id: &str,
+    approval: &CodexApprovalRequest,
+) -> Result<CodexApprovalDecision, String> {
+    let payload = serde_json::to_string(&CodexApprovalRequestEventResponse {
+        kind: "codex_approval_request",
+        session_id: session_id.to_string(),
+        approval: approval.clone(),
+    })
+    .map_err(|error| error.to_string())?;
+    writeln!(writer, "{payload}").map_err(|error| error.to_string())?;
+    writer.flush().map_err(|error| error.to_string())?;
+
+    loop {
+        let Some(request) =
+            read_next_stdio_request(reader, writer).map_err(|error| error.to_string())?
+        else {
+            return Err("stdio closed while waiting for approval decision".to_string());
+        };
+
+        let operation = request.operation.or(request.query).unwrap_or_default();
+        if operation != "codex-resolve-approval" {
+            writeln!(
+                writer,
+                "{}",
+                serialize_error(format!(
+                    "unsupported operation while waiting for approval: {operation}"
+                ))
+            )
+            .map_err(|error| error.to_string())?;
+            writer.flush().map_err(|error| error.to_string())?;
+            continue;
+        }
+
+        if request.session_id.as_deref() != Some(session_id) {
+            writeln!(
+                writer,
+                "{}",
+                serialize_error("approval sessionId does not match active turn".to_string())
+            )
+            .map_err(|error| error.to_string())?;
+            writer.flush().map_err(|error| error.to_string())?;
+            continue;
+        }
+
+        if request.approval_id.as_deref() != Some(approval.approval_id.as_str()) {
+            writeln!(
+                writer,
+                "{}",
+                serialize_error("approvalId does not match active approval".to_string())
+            )
+            .map_err(|error| error.to_string())?;
+            writer.flush().map_err(|error| error.to_string())?;
+            continue;
+        }
+
+        match request.approval_decision.as_deref() {
+            Some("accept") => return Ok(CodexApprovalDecision::Accept),
+            Some("cancel") => return Ok(CodexApprovalDecision::Cancel),
+            Some(other) => {
+                writeln!(
+                    writer,
+                    "{}",
+                    serialize_error(format!("unsupported approvalDecision: {other}"))
+                )
+                .map_err(|error| error.to_string())?;
+                writer.flush().map_err(|error| error.to_string())?;
+            }
+            None => {
+                writeln!(
+                    writer,
+                    "{}",
+                    serialize_error("missing approvalDecision".to_string())
+                )
+                .map_err(|error| error.to_string())?;
+                writer.flush().map_err(|error| error.to_string())?;
+            }
+        }
+    }
 }
 
 fn serialize_payload<T: Serialize>(payload: &T, pretty: bool) -> Result<String, String> {
@@ -344,28 +471,11 @@ fn with_codex_runtime_registry<T>(
 fn serve_stdio(repo_root: &Path) -> io::Result<()> {
     let stdin = io::stdin();
     let stdout = io::stdout();
+    let mut reader = io::BufReader::new(stdin.lock());
     let mut writer = io::BufWriter::new(stdout.lock());
 
-    for line in stdin.lock().lines() {
-        let line = line?;
-        if line.trim().is_empty() {
-            continue;
-        }
-
-        let request = match serde_json::from_str::<StdioRequest>(&line) {
-            Ok(request) => request,
-            Err(error) => {
-                writeln!(
-                    writer,
-                    "{}",
-                    serialize_error(format!("invalid request: {error}"))
-                )?;
-                writer.flush()?;
-                continue;
-            }
-        };
-
-        if handle_streaming_stdio_request(&request, repo_root, &mut writer)? {
+    while let Some(request) = read_next_stdio_request(&mut reader, &mut writer)? {
+        if handle_streaming_stdio_request(&request, repo_root, &mut reader, &mut writer)? {
             continue;
         }
 
@@ -423,6 +533,7 @@ fn handle_parsed_stdio_request(request: StdioRequest, repo_root: &Path) -> Strin
 fn handle_streaming_stdio_request(
     request: &StdioRequest,
     repo_root: &Path,
+    reader: &mut impl BufRead,
     writer: &mut impl Write,
 ) -> io::Result<bool> {
     let operation = request
@@ -437,7 +548,9 @@ fn handle_streaming_stdio_request(
 
     let response = match (request.session_id.as_deref(), request.input_text.as_deref()) {
         (Some(session_id), Some(input_text)) => {
-            match codex_submit_turn_stream_json(repo_root, session_id, input_text, false, writer) {
+            match codex_submit_turn_stream_json(
+                repo_root, session_id, input_text, false, reader, writer,
+            ) {
                 Ok(payload) => payload,
                 Err(message) => serialize_error(message),
             }
@@ -449,6 +562,35 @@ fn handle_streaming_stdio_request(
     writeln!(writer, "{response}")?;
     writer.flush()?;
     Ok(true)
+}
+
+fn read_next_stdio_request(
+    reader: &mut impl BufRead,
+    writer: &mut impl Write,
+) -> io::Result<Option<StdioRequest>> {
+    loop {
+        let mut line = String::new();
+        let bytes_read = reader.read_line(&mut line)?;
+        if bytes_read == 0 {
+            return Ok(None);
+        }
+
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        match serde_json::from_str::<StdioRequest>(&line) {
+            Ok(request) => return Ok(Some(request)),
+            Err(error) => {
+                writeln!(
+                    writer,
+                    "{}",
+                    serialize_error(format!("invalid request: {error}"))
+                )?;
+                writer.flush()?;
+            }
+        }
+    }
 }
 
 fn serialize_error(message: String) -> String {

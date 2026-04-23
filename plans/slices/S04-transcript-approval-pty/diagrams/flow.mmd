@@ -12,6 +12,11 @@ flowchart LR
     Resume --> TurnStart["turn/start"]
     LiveThread --> TurnStart
     TurnStart --> Poll["thread/read polling"]
+    Poll --> Approval["server request:\nitem/commandExecution/requestApproval"]
+    Approval --> DaemonApproval["core-daemon emits\ncodex_approval_request"]
+    DaemonApproval --> ApprovalSheet["native approval sheet"]
+    ApprovalSheet --> ApprovalReply["codex-resolve-approval"]
+    ApprovalReply --> AppServer
     Poll --> Stream["successive CodexTranscriptSnapshot"]
     Poll --> Final["terminal CodexTranscriptSnapshot"]
     ArchiveRead --> Final

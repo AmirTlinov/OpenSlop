@@ -18,12 +18,24 @@ codex app-server generate-json-schema --out /tmp/openslop-codex-schema
 - `thread/read` request/response;
 - `thread/resume` request/response;
 - `turn/start` request/response.
+- `ServerRequest` для server-initiated approval requests;
+- `CommandExecutionRequestApproval*`;
+- `FileChangeRequestApproval*`.
 
 Этого достаточно для текущего честного contour:
-`core-daemon -> codex app-server -> thread/start -> live turn -> successive transcript snapshots`.
+`core-daemon -> codex app-server -> thread/start -> live turn -> successive transcript snapshots -> native approval request -> approval response -> terminal snapshot`.
 
 Важная граница текущего runtime:
 - до первого завершённого turn thread ещё не materialized на диск;
 - после materialization cold `thread/read` может вернуть архивный `thread.status.type = notLoaded`;
 - перед новым интерактивным turn на cold thread нужен `thread/resume`.
 - текущий streaming lane строится через daemon-owned polling successive `thread/read` snapshots.
+
+Важная S04-specific реальность:
+- approvals приходят server->client request'ами, не transcript-only surface;
+- на этой машине default thread policy возвращает `sandbox.type = dangerFullAccess`, поэтому сам по себе `approvalPolicy = on-request` не поднимал approval для workspace edits;
+- для живого proof target текущий approval-enabled turn идёт через override:
+  - `approvalPolicy = "untrusted"`
+  - `approvalsReviewer = "user"`
+  - `sandboxPolicy = { "type": "readOnly" }`
+- live proof для этого шага закреплён на `commandExecution/requestApproval` и показал real approval event для `python3 -c "print(123)"`.
