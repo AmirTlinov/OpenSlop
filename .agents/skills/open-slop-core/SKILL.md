@@ -1,3 +1,11 @@
+---
+name: open-slop-core
+description: >-
+  Core router for OpenSlop when a task crosses multiple domains and needs
+  product-wide context: native macOS workbench, provider plurality, event
+  spine, browser, harness, and fail-closed verify.
+---
+
 # OpenSlop Core
 
 ## Когда использовать
