@@ -1,21 +1,38 @@
 import SwiftUI
+import WorkbenchCore
 
 struct SidebarPanelView: View {
-    let projects: [ProjectSeed]
-    @Binding var selectedProjectID: ProjectSeed.ID?
+    let sessions: [DaemonSessionSummary]
+    @Binding var selectedSessionID: DaemonSessionSummary.ID?
+    let loadSummary: String
 
     var body: some View {
-        List(projects, selection: $selectedProjectID) { project in
-            VStack(alignment: .leading, spacing: 4) {
-                Text(project.name)
-                    .font(.headline)
-                Text(project.branch)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        List(selection: $selectedSessionID) {
+            Section {
+                if sessions.isEmpty {
+                    Text(loadSummary)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 8)
+                } else {
+                    ForEach(sessions) { session in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(session.title)
+                                .font(.headline)
+                            Text("\(session.workspace) · \(session.provider) · \(session.status)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                        .tag(session.id)
+                    }
+                }
+            } header: {
+                Text("Сессии")
+            } footer: {
+                Text(loadSummary)
             }
-            .padding(.vertical, 4)
         }
         .listStyle(.sidebar)
-        .navigationTitle("Проекты")
+        .navigationTitle("Workbench")
     }
 }

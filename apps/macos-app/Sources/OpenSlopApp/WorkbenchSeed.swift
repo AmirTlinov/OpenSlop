@@ -1,10 +1,5 @@
 import Foundation
-
-struct ProjectSeed: Identifiable, Hashable {
-    let id: UUID
-    let name: String
-    let branch: String
-}
+import WorkbenchCore
 
 struct TimelineItemSeed: Identifiable, Hashable {
     enum Kind: String {
@@ -27,27 +22,44 @@ struct InspectorCardSeed: Identifiable, Hashable {
 }
 
 struct WorkbenchSeed {
-    let projects: [ProjectSeed]
-    let timeline: [TimelineItemSeed]
-    let inspectorCards: [InspectorCardSeed]
+    static let bootstrap = WorkbenchSeed()
 
-    static let preview = WorkbenchSeed(
-        projects: [
-            ProjectSeed(id: UUID(), name: "OpenSlop", branch: "main"),
-            ProjectSeed(id: UUID(), name: "Main Cluster", branch: "feature/codex-runtime"),
-            ProjectSeed(id: UUID(), name: "Sprite Studio", branch: "review/browser-pane"),
-        ],
-        timeline: [
-            TimelineItemSeed(id: UUID(), kind: .user, title: "Собрать первый слайс", detail: "Создать репозиторную конституцию и минимальные seeds."),
-            TimelineItemSeed(id: UUID(), kind: .agent, title: "Root документы готовы", detail: "AGENTS, PHILOSOPHY, ARCHITECTURE, DESIGN и ROADMAP материализованы."),
-            TimelineItemSeed(id: UUID(), kind: .tool, title: "make doctor", detail: "Проверка формы репозитория и обязательных узлов."),
-            TimelineItemSeed(id: UUID(), kind: .verify, title: "S00 acceptance", detail: "macOS shell seed, daemon heartbeat и repo-lint должны быть зелёными."),
-        ],
-        inspectorCards: [
-            InspectorCardSeed(id: UUID(), title: "Provider", value: "Codex / Claude planned"),
-            InspectorCardSeed(id: UUID(), title: "Verify", value: "S00 in progress"),
-            InspectorCardSeed(id: UUID(), title: "Browser", value: "Preview domain planned"),
-            InspectorCardSeed(id: UUID(), title: "Sessions", value: "3 sample entries"),
+    func timeline(
+        for session: DaemonSessionSummary?,
+        loadSummary: String
+    ) -> [TimelineItemSeed] {
+        [
+            TimelineItemSeed(
+                id: UUID(),
+                kind: .agent,
+                title: "Session projection loaded from daemon",
+                detail: loadSummary
+            ),
+            TimelineItemSeed(
+                id: UUID(),
+                kind: .tool,
+                title: "core-daemon --query session-list",
+                detail: "Sidebar и header больше не зависят от hardcoded списка."
+            ),
+            TimelineItemSeed(
+                id: UUID(),
+                kind: .verify,
+                title: "S02 first proof target",
+                detail: session.map { "Выбрана реальная session: \($0.title) [\($0.provider)]" } ?? "Ожидаем или не можем получить session list."
+            ),
         ]
-    )
+    }
+
+    func inspectorCards(
+        projectionKind: String,
+        sessionsCount: Int,
+        selectedSession: DaemonSessionSummary?
+    ) -> [InspectorCardSeed] {
+        [
+            InspectorCardSeed(id: UUID(), title: "Projection", value: projectionKind),
+            InspectorCardSeed(id: UUID(), title: "Sessions", value: "\(sessionsCount)"),
+            InspectorCardSeed(id: UUID(), title: "Provider", value: selectedSession?.provider ?? "—"),
+            InspectorCardSeed(id: UUID(), title: "Branch", value: selectedSession?.branch ?? "—"),
+        ]
+    }
 }

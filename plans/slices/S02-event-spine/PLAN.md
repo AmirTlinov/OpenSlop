@@ -1,14 +1,16 @@
 # S02-event-spine — Event spine
 
 ## Outcome
-Построить canonical event log, IPC и первые projections для UI.
+Построить первый честный event-spine path: core-daemon отдаёт daemon-owned `session_list` projection, probe и macOS shell читают её и UI показывает реальные sessions вместо hardcoded sidebar списка.
 
 ## Touches
 - services/core-daemon
 - domains/session
-- domains/artifact
-- domains/search
+- apps/macos-app
+- tools/repo-lint
 
 ## Out of scope
-- Всё, что не нужно для честного закрытия этого слайса.
-- Декоративные документы без load-bearing результата.
+- Полный event bus.
+- Долгоживущие subscriptions.
+- Настоящий thread/turn persistence beyond this first projection.
+- Browser, diff и verify integrations.

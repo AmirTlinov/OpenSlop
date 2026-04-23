@@ -1,21 +1,23 @@
 import SwiftUI
+import WorkbenchCore
 
 struct TimelinePanelView: View {
-    let project: ProjectSeed?
+    let session: DaemonSessionSummary?
+    let loadSummary: String
     let timeline: [TimelineItemSeed]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(project?.name ?? "Нет проекта")
+                    Text(session?.title ?? "Session list unavailable")
                         .font(.title2.weight(.semibold))
-                    Text(project?.branch ?? "")
+                    Text(headerSubtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Label("S00", systemImage: "flag.fill")
+                Label("S02", systemImage: "bolt.horizontal.fill")
                     .font(.caption.weight(.semibold))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
@@ -47,5 +49,12 @@ struct TimelinePanelView: View {
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
+    }
+
+    private var headerSubtitle: String {
+        if let session {
+            return "\(session.workspace) · \(session.branch) · \(session.provider) · \(session.status)"
+        }
+        return loadSummary
     }
 }

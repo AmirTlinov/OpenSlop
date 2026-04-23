@@ -1,6 +1,7 @@
 # ACCEPTANCE
 
-- UI может читать session list из daemon.
-- Session truth переживает restart UI.
-- Тяжёлые payloads не хранятся inline.
-- Есть perf-бюджет для projections.
+- `./target/debug/core-daemon --query session-list` печатает JSON projection `kind=session_list`.
+- `swift run --package-path apps/macos-app OpenSlopProbe` читает projection через тот же client path.
+- `WorkbenchRootView` использует daemon-backed sessions в sidebar вместо hardcoded списка.
+- `make smoke` проходит и включает probe path.
+- Есть slice-local review artifact и visual-check для обновлённой shell anatomy.
