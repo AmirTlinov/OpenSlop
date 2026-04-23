@@ -21,6 +21,9 @@ struct CommandExecControlPaneView: View {
                     Text("Guided same-connection proof lane. Current scope: один fixed command, one write, потом one terminate.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    Text("Если follow-up write или terminate не приходит примерно за 5 секунд, lane завершается failed.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
 
                 Spacer()

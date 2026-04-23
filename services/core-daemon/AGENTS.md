@@ -20,4 +20,5 @@
 - native approval event для активного Codex turn и ожидание решения по тому же stdio transport;
 - raw `codex-command-exec-stream` output events и final `codex-command-exec` result без записи этого contour в `session_list`;
 - bounded nested `codex-command-exec-control-stream` dialogue для same-connection `write` и `terminate`;
+- fail-closed timeout для `codex-command-exec-control-stream`, если follow-up `write/terminate` не пришёл примерно за 5 секунд;
 - честные error responses, когда session пережила restart раньше первого completed turn.

@@ -1,0 +1,6 @@
+flowchart TD
+    A[First output arrives] --> B{Expected follow-up sent in 5s?}
+    B -- yes --> C[Control request goes to core-daemon]
+    C --> D[Proof lane continues]
+    B -- no --> E[core-daemon returns explicit timeout error]
+    E --> F[GUI surface becomes failed]

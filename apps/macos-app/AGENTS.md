@@ -45,7 +45,9 @@ macos-app
    │  └─ main.swift
    ├─ OpenSlopCommandExecControlProbe/
    │  └─ main.swift
-   └─ OpenSlopCommandExecControlSurfaceProbe/
+   ├─ OpenSlopCommandExecControlSurfaceProbe/
+   │  └─ main.swift
+   └─ OpenSlopCommandExecControlTimeoutProbe/
       └─ main.swift
 ```
 
@@ -65,3 +67,4 @@ macos-app
 - `WorkbenchCore/CodexCommandExecControlSurface.swift` держит отдельную UI truth для guided standalone exec proof contour: live output, stable `processId`, stage `awaitingWrite/awaitingTerminate`, final exit.
 - `CommandExecControlPaneView` показывает этот contour в inspector и честно говорит, что это пока fixed proof command + bounded one-write/one-terminate lane, а не full terminal runtime.
 - `OpenSlopCommandExecControlSurfaceProbe` доказывает, что GUI surface и probe share one same-connection proof contour с `READY -> PING -> terminate`.
+- `OpenSlopCommandExecControlTimeoutProbe` доказывает fail-closed contour: если GUI не прислал `write` или `terminate`, lane падает примерно за 5 секунд и не зависает молча.
