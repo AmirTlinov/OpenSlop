@@ -45,6 +45,11 @@ provider
   - provider поднимает свежий `codex app-server` только на время одного standalone exec;
   - buffered exec и streaming exec живут вне session registry и вне transcript truth;
   - output deltas идут наружу как raw base64 chunks c client-supplied `processId`.
+- В S04b поверх этого появился первый same-connection control proof:
+  - pinned subset дополнен `CommandExecWriteParams`, `CommandExecTerminateParams` и `CommandExecResizeParams`;
+  - provider умеет bounded control loop для одного live streaming exec;
+  - follow-up `write` и `terminate` идут на той же связи и через тот же `processId`;
+  - `resize` пока не объявлен доказанным surface и остаётся только pinned contract.
 - Raw upstream truth для `item/commandExecution/terminalInteraction` теперь отделён отдельным witness-скриптом:
   - `domains/provider/contracts/codex-app-server/v0.123.0/witnesses/terminal_interaction_witness.py`;
   - он идёт напрямую в `codex app-server` по stdio и не проходит через provider/core-daemon/gui;

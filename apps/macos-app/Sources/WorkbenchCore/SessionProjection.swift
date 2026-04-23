@@ -38,6 +38,8 @@ struct CoreDaemonRequest: Codable, Sendable {
     let cwd: String?
     let processId: String?
     let streamStdoutStderr: Bool?
+    let deltaBase64: String?
+    let closeStdin: Bool?
 
     init(
         operation: String,
@@ -48,7 +50,9 @@ struct CoreDaemonRequest: Codable, Sendable {
         command: [String]? = nil,
         cwd: String? = nil,
         processId: String? = nil,
-        streamStdoutStderr: Bool? = nil
+        streamStdoutStderr: Bool? = nil,
+        deltaBase64: String? = nil,
+        closeStdin: Bool? = nil
     ) {
         self.operation = operation
         self.sessionId = sessionId
@@ -59,6 +63,8 @@ struct CoreDaemonRequest: Codable, Sendable {
         self.cwd = cwd
         self.processId = processId
         self.streamStdoutStderr = streamStdoutStderr
+        self.deltaBase64 = deltaBase64
+        self.closeStdin = closeStdin
     }
 }
 

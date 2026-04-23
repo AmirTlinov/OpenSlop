@@ -1,0 +1,26 @@
+sequenceDiagram
+    participant Probe as OpenSlopCommandExecControlProbe
+    participant Client as WorkbenchCore
+    participant Daemon as core-daemon
+    participant Provider as provider-domain
+    participant Codex as codex app-server
+
+    Probe->>Client: codex-command-exec-control-stream
+    Client->>Daemon: start control stream
+    Daemon->>Provider: stream command with control callback
+    Provider->>Codex: command/exec(processId, streamStdoutStderr, streamStdin)
+    Codex-->>Provider: outputDelta READY
+    Provider-->>Daemon: outputDelta READY
+    Daemon-->>Client: codex_command_exec_output_event READY
+    Client-->>Daemon: codex-command-exec-write(PING\n)
+    Daemon-->>Provider: write follow-up
+    Provider->>Codex: command/exec/write
+    Codex-->>Provider: outputDelta PING\n
+    Provider-->>Daemon: outputDelta PING\n
+    Daemon-->>Client: codex_command_exec_output_event PING\n
+    Client-->>Daemon: codex-command-exec-terminate
+    Daemon-->>Provider: terminate follow-up
+    Provider->>Codex: command/exec/terminate
+    Codex-->>Provider: final command/exec response
+    Provider-->>Daemon: codex_command_exec_result
+    Daemon-->>Client: codex_command_exec_result

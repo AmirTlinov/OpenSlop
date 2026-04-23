@@ -1,8 +1,9 @@
 use provider_domain::{
-    CodexApprovalDecision, CodexApprovalRequest, CodexCommandExecOutputDelta,
-    CodexCommandExecOutputStream, CodexCommandExecParams, CodexCommandExecResult,
+    CodexApprovalDecision, CodexApprovalRequest, CodexCommandExecControlRequest,
+    CodexCommandExecOutputDelta, CodexCommandExecOutputStream, CodexCommandExecParams,
+    CodexCommandExecResult, CodexCommandExecTerminateParams, CodexCommandExecWriteParams,
     CodexRuntimeRegistry, CodexThreadBootstrap, exec_codex_command, read_codex_transcript,
-    stream_codex_command, submit_codex_turn,
+    stream_codex_command, stream_codex_command_with_control, submit_codex_turn,
 };
 use serde::{Deserialize, Serialize};
 use session_domain::{
@@ -32,6 +33,8 @@ struct StdioRequest {
     cwd: Option<String>,
     process_id: Option<String>,
     stream_stdout_stderr: Option<bool>,
+    delta_base64: Option<String>,
+    close_stdin: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -314,6 +317,30 @@ fn codex_command_exec_stream_json(
     serialize_payload(&map_command_exec_result(result), pretty)
 }
 
+fn codex_command_exec_control_stream_json(
+    repo_root: &Path,
+    params: &CodexCommandExecParams,
+    pretty: bool,
+    reader: &mut impl BufRead,
+    writer: &mut impl Write,
+) -> Result<String, String> {
+    let bridge = RefCell::new(CodexCommandExecControlBridge {
+        reader,
+        writer,
+        process_id: params
+            .process_id
+            .clone()
+            .ok_or_else(|| "missing processId".to_string())?,
+        writes_seen: 0,
+        terminates_seen: 0,
+    });
+    let result = stream_codex_command_with_control(repo_root, params, |delta| {
+        bridge.borrow_mut().emit_output_and_wait_for_control(delta)
+    })
+    .map_err(|error| error.to_string())?;
+    serialize_payload(&map_command_exec_result(result), pretty)
+}
+
 struct CodexTurnStreamBridge<'a, R: BufRead, W: Write> {
     reader: &'a mut R,
     writer: &'a mut W,
@@ -359,6 +386,47 @@ impl<W: Write> CodexCommandExecStreamBridge<'_, W> {
         .map_err(|error| error.to_string())?;
         writeln!(self.writer, "{payload}").map_err(|error| error.to_string())?;
         self.writer.flush().map_err(|error| error.to_string())
+    }
+}
+
+struct CodexCommandExecControlBridge<'a, R: BufRead, W: Write> {
+    reader: &'a mut R,
+    writer: &'a mut W,
+    process_id: String,
+    writes_seen: usize,
+    terminates_seen: usize,
+}
+
+impl<R: BufRead, W: Write> CodexCommandExecControlBridge<'_, R, W> {
+    fn emit_output_and_wait_for_control(
+        &mut self,
+        delta: CodexCommandExecOutputDelta,
+    ) -> Result<Option<CodexCommandExecControlRequest>, String> {
+        let payload = serde_json::to_string(&CodexCommandExecOutputEventResponse {
+            kind: "codex_command_exec_output_event",
+            process_id: delta.process_id,
+            stream: delta.stream,
+            delta_base64: delta.delta_base64,
+            cap_reached: delta.cap_reached,
+        })
+        .map_err(|error| error.to_string())?;
+        writeln!(self.writer, "{payload}").map_err(|error| error.to_string())?;
+        self.writer.flush().map_err(|error| error.to_string())?;
+
+        if self.writes_seen == 0 {
+            let control = wait_for_command_exec_write(self.reader, self.writer, &self.process_id)?;
+            self.writes_seen += 1;
+            return Ok(Some(control));
+        }
+
+        if self.terminates_seen == 0 {
+            let control =
+                wait_for_command_exec_terminate(self.reader, self.writer, &self.process_id)?;
+            self.terminates_seen += 1;
+            return Ok(Some(control));
+        }
+
+        Ok(None)
     }
 }
 
@@ -445,6 +513,100 @@ fn wait_for_approval_decision(
     }
 }
 
+fn wait_for_command_exec_write(
+    reader: &mut impl BufRead,
+    writer: &mut impl Write,
+    process_id: &str,
+) -> Result<CodexCommandExecControlRequest, String> {
+    loop {
+        let Some(request) =
+            read_next_stdio_request(reader, writer).map_err(|error| error.to_string())?
+        else {
+            return Err("stdio closed while waiting for command/exec write".to_string());
+        };
+
+        let operation = request.operation.or(request.query).unwrap_or_default();
+        if operation != "codex-command-exec-write" {
+            writeln!(
+                writer,
+                "{}",
+                serialize_error(format!(
+                    "unsupported operation while waiting for command/exec write: {operation}"
+                ))
+            )
+            .map_err(|error| error.to_string())?;
+            writer.flush().map_err(|error| error.to_string())?;
+            continue;
+        }
+
+        if request.process_id.as_deref() != Some(process_id) {
+            writeln!(
+                writer,
+                "{}",
+                serialize_error("write processId does not match active command/exec".to_string())
+            )
+            .map_err(|error| error.to_string())?;
+            writer.flush().map_err(|error| error.to_string())?;
+            continue;
+        }
+
+        return Ok(CodexCommandExecControlRequest::Write(
+            CodexCommandExecWriteParams {
+                process_id: process_id.to_string(),
+                delta_base64: request.delta_base64,
+                close_stdin: request.close_stdin.unwrap_or(false),
+            },
+        ));
+    }
+}
+
+fn wait_for_command_exec_terminate(
+    reader: &mut impl BufRead,
+    writer: &mut impl Write,
+    process_id: &str,
+) -> Result<CodexCommandExecControlRequest, String> {
+    loop {
+        let Some(request) =
+            read_next_stdio_request(reader, writer).map_err(|error| error.to_string())?
+        else {
+            return Err("stdio closed while waiting for command/exec terminate".to_string());
+        };
+
+        let operation = request.operation.or(request.query).unwrap_or_default();
+        if operation != "codex-command-exec-terminate" {
+            writeln!(
+                writer,
+                "{}",
+                serialize_error(format!(
+                    "unsupported operation while waiting for command/exec terminate: {operation}"
+                ))
+            )
+            .map_err(|error| error.to_string())?;
+            writer.flush().map_err(|error| error.to_string())?;
+            continue;
+        }
+
+        if request.process_id.as_deref() != Some(process_id) {
+            writeln!(
+                writer,
+                "{}",
+                serialize_error(
+                    "terminate processId does not match active command/exec".to_string(),
+                )
+            )
+            .map_err(|error| error.to_string())?;
+            writer.flush().map_err(|error| error.to_string())?;
+            continue;
+        }
+
+        return Ok(CodexCommandExecControlRequest::Terminate(
+            CodexCommandExecTerminateParams {
+                process_id: process_id.to_string(),
+            },
+        ));
+    }
+}
+
 fn serialize_payload<T: Serialize>(payload: &T, pretty: bool) -> Result<String, String> {
     if pretty {
         serde_json::to_string_pretty(payload).map_err(|error| error.to_string())
@@ -473,7 +635,17 @@ fn build_command_exec_params(request: &StdioRequest) -> Result<CodexCommandExecP
         cwd: request.cwd.clone(),
         process_id: request.process_id.clone(),
         stream_stdout_stderr: request.stream_stdout_stderr.unwrap_or(false),
+        stream_stdin: false,
     })
+}
+
+fn build_command_exec_control_params(
+    request: &StdioRequest,
+) -> Result<CodexCommandExecParams, String> {
+    let mut params = build_command_exec_params(request)?;
+    params.stream_stdout_stderr = true;
+    params.stream_stdin = true;
+    Ok(params)
 }
 
 fn map_bootstrap_to_session(repo_root: &Path, bootstrap: &CodexThreadBootstrap) -> SessionSummary {
@@ -627,6 +799,9 @@ fn handle_parsed_stdio_request(request: StdioRequest, repo_root: &Path) -> Strin
             },
             Err(message) => serialize_error(message),
         },
+        "codex-command-exec-write" | "codex-command-exec-terminate" => serialize_error(format!(
+            "{operation} is only supported inside codex-command-exec-control-stream"
+        )),
         other => serialize_error(format!("unsupported operation: {other}")),
     }
 }
@@ -663,6 +838,17 @@ fn handle_streaming_stdio_request(
                 Ok(payload) => payload,
                 Err(message) => serialize_error(message),
             },
+            Err(message) => serialize_error(message),
+        },
+        "codex-command-exec-control-stream" => match build_command_exec_control_params(request) {
+            Ok(params) => {
+                match codex_command_exec_control_stream_json(
+                    repo_root, &params, false, reader, writer,
+                ) {
+                    Ok(payload) => payload,
+                    Err(message) => serialize_error(message),
+                }
+            }
             Err(message) => serialize_error(message),
         },
         _ => return Ok(false),
@@ -820,6 +1006,8 @@ mod tests {
             cwd: None,
             process_id: None,
             stream_stdout_stderr: Some(true),
+            delta_base64: None,
+            close_stdin: None,
         };
         let mut reader = io::Cursor::new(Vec::<u8>::new());
         let mut writer = Vec::<u8>::new();
@@ -832,5 +1020,16 @@ mod tests {
         let text = String::from_utf8(writer).expect("writer should be utf8");
         assert!(text.contains("\"kind\":\"error\""));
         assert!(text.contains("processId"));
+    }
+
+    #[test]
+    fn rejects_standalone_command_exec_write_operation() {
+        let temp = tempdir().expect("temp dir should exist");
+        let response = handle_stdio_request(
+            r#"{"operation":"codex-command-exec-write","processId":"proc-1","deltaBase64":"UElORwo="}"#,
+            temp.path(),
+        );
+        assert!(response.contains("\"kind\":\"error\""));
+        assert!(response.contains("only supported inside codex-command-exec-control-stream"));
     }
 }

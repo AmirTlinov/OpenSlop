@@ -73,3 +73,14 @@ codex app-server generate-json-schema --out /tmp/openslop-codex-schema
   - `WorkbenchCore` и `OpenSlopCommandExecProbe` доказывают buffered и streaming semantics;
   - write / resize / terminate, reconnect, transcript readback и PTY pane сюда пока не заявлены.
 - Текущий proof не заявляет long-running guarantee сверх локального timeout window этого слайса. Для действительно долгих интерактивных процессов нужен отдельный PTY/runtime slice.
+
+Важная S04b-specific реальность:
+- follow-up control для `command/exec` живёт только на той же связи и на том же client-supplied `processId`;
+- в pinned subset теперь лежат и:
+  - `v2/CommandExecWriteParams.json`
+  - `v2/CommandExecTerminateParams.json`
+  - `v2/CommandExecResizeParams.json`
+- текущий product proof этого шага всё ещё узкий:
+  - доказан same-connection `write` и `terminate`;
+  - `resize` пока только pinned в contract subset и явно не объявлен доказанным surface;
+  - control dialogue сейчас bounded и proof-owned, без reconnect и без background PTY registry claims.

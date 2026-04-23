@@ -15,6 +15,7 @@ let package = Package(
         .executable(name: "OpenSlopTurnProbe", targets: ["OpenSlopTurnProbe"]),
         .executable(name: "OpenSlopTerminalInteractionProbe", targets: ["OpenSlopTerminalInteractionProbe"]),
         .executable(name: "OpenSlopCommandExecProbe", targets: ["OpenSlopCommandExecProbe"]),
+        .executable(name: "OpenSlopCommandExecControlProbe", targets: ["OpenSlopCommandExecControlProbe"]),
     ],
     targets: [
         .target(
@@ -55,6 +56,11 @@ let package = Package(
             name: "OpenSlopCommandExecProbe",
             dependencies: ["WorkbenchCore"],
             path: "Sources/OpenSlopCommandExecProbe"
+        ),
+        .executableTarget(
+            name: "OpenSlopCommandExecControlProbe",
+            dependencies: ["WorkbenchCore"],
+            path: "Sources/OpenSlopCommandExecControlProbe"
         ),
     ]
 )

@@ -106,6 +106,7 @@ pub struct CodexCommandExecParams {
     pub cwd: Option<String>,
     pub process_id: Option<String>,
     pub stream_stdout_stderr: bool,
+    pub stream_stdin: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -130,6 +131,27 @@ pub struct CodexCommandExecOutputDelta {
     pub stream: CodexCommandExecOutputStream,
     pub delta_base64: String,
     pub cap_reached: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexCommandExecWriteParams {
+    pub process_id: String,
+    pub delta_base64: Option<String>,
+    pub close_stdin: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexCommandExecTerminateParams {
+    pub process_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CodexCommandExecControlRequest {
+    Write(CodexCommandExecWriteParams),
+    Terminate(CodexCommandExecTerminateParams),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -313,6 +335,19 @@ where
 {
     let binary = codex_binary();
     stream_codex_command_with_binary(repo_root, &binary, params, on_output)
+}
+
+pub fn stream_codex_command_with_control<F, E>(
+    repo_root: &Path,
+    params: &CodexCommandExecParams,
+    on_output: F,
+) -> Result<CodexCommandExecResult, CodexRuntimeError>
+where
+    F: FnMut(CodexCommandExecOutputDelta) -> Result<Option<CodexCommandExecControlRequest>, E>,
+    E: Display,
+{
+    let binary = codex_binary();
+    stream_codex_command_with_control_with_binary(repo_root, &binary, params, on_output)
 }
 
 impl Default for CodexRuntimeRegistry {
@@ -542,6 +577,23 @@ where
     let mut process = CodexAppServerProcess::launch(repo_root, binary)?;
     process.initialize()?;
     process.stream_command(params, on_output)
+}
+
+pub fn stream_codex_command_with_control_with_binary<F, E>(
+    repo_root: &Path,
+    binary: &Path,
+    params: &CodexCommandExecParams,
+    on_output: F,
+) -> Result<CodexCommandExecResult, CodexRuntimeError>
+where
+    F: FnMut(CodexCommandExecOutputDelta) -> Result<Option<CodexCommandExecControlRequest>, E>,
+    E: Display,
+{
+    validate_command_exec_params(params, true)?;
+
+    let mut process = CodexAppServerProcess::launch(repo_root, binary)?;
+    process.initialize()?;
+    process.stream_command_with_control(params, on_output)
 }
 
 fn capability_snapshot() -> CodexCapabilitySnapshot {
@@ -814,6 +866,24 @@ impl ServerApprovalRequest {
 }
 
 impl CodexAppServerProcess {
+    fn send_request_line<P>(
+        &mut self,
+        id: u64,
+        method: &str,
+        params: &P,
+    ) -> Result<(), CodexRuntimeError>
+    where
+        P: Serialize,
+    {
+        let request = JsonRpcRequest { id, method, params };
+        let mut payload = serde_json::to_vec(&request)?;
+        payload.push(b'\n');
+        self.stdin
+            .write_all(&payload)
+            .map_err(CodexRuntimeError::StdinWrite)?;
+        self.stdin.flush().map_err(CodexRuntimeError::StdinWrite)
+    }
+
     fn launch(repo_root: &Path, binary: &Path) -> Result<Self, CodexRuntimeError> {
         let mut child = Command::new(binary)
             .arg("app-server")
@@ -925,6 +995,116 @@ impl CodexAppServerProcess {
             Some(&mut notification_handler),
             RequestTiming::COMMAND_EXEC_STREAMING,
         )
+    }
+
+    fn stream_command_with_control<F, E>(
+        &mut self,
+        params: &CodexCommandExecParams,
+        mut on_output: F,
+    ) -> Result<CodexCommandExecResult, CodexRuntimeError>
+    where
+        F: FnMut(CodexCommandExecOutputDelta) -> Result<Option<CodexCommandExecControlRequest>, E>,
+        E: Display,
+    {
+        let start_id = 2u64;
+        self.send_request_line(start_id, "command/exec", params)?;
+
+        let mut deadline = Instant::now() + COMMAND_EXEC_TIMEOUT;
+        let mut next_followup_id = 3u64;
+        let mut pending_followups: HashMap<u64, &'static str> = HashMap::new();
+
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(CodexRuntimeError::ResponseTimeout {
+                    method: "command/exec".to_string(),
+                    waited_ms: COMMAND_EXEC_TIMEOUT.as_millis(),
+                    stderr: self.stderr_snapshot(),
+                });
+            }
+
+            let line = self.stdout_rx.recv_timeout(remaining).map_err(|_| {
+                CodexRuntimeError::ResponseTimeout {
+                    method: "command/exec".to_string(),
+                    waited_ms: COMMAND_EXEC_TIMEOUT.as_millis(),
+                    stderr: self.stderr_snapshot(),
+                }
+            })?;
+            let message: Value = serde_json::from_str(&line)?;
+
+            if let Some(server_method) = message.get("method").and_then(|value| value.as_str()) {
+                if let Some(delta) = parse_command_exec_output_delta(server_method, &message)? {
+                    if let Some(control) = on_output(delta).map_err(|error| {
+                        CodexRuntimeError::StreamCallbackFailed {
+                            message: error.to_string(),
+                        }
+                    })? {
+                        let followup_id = next_followup_id;
+                        next_followup_id += 1;
+                        let (method, params) = control.into_request_parts()?;
+                        self.send_request_line(followup_id, method, &params)?;
+                        pending_followups.insert(followup_id, method);
+                    }
+                    deadline = Instant::now() + COMMAND_EXEC_TIMEOUT;
+                }
+                continue;
+            }
+
+            let response_id = message
+                .get("id")
+                .and_then(|value| value.as_u64())
+                .ok_or_else(|| CodexRuntimeError::InvalidResponse {
+                    method: "command/exec".to_string(),
+                    message: line.clone(),
+                })?;
+
+            if response_id == start_id {
+                if let Some(error) = message.get("error") {
+                    let code = error
+                        .get("code")
+                        .and_then(|value| value.as_i64())
+                        .unwrap_or(-1);
+                    let message = error
+                        .get("message")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("unknown error")
+                        .to_string();
+                    return Err(CodexRuntimeError::ServerError {
+                        method: "command/exec".to_string(),
+                        code,
+                        message,
+                    });
+                }
+
+                let result = message.get("result").cloned().ok_or_else(|| {
+                    CodexRuntimeError::InvalidResponse {
+                        method: "command/exec".to_string(),
+                        message: line.clone(),
+                    }
+                })?;
+                return serde_json::from_value(result).map_err(CodexRuntimeError::Json);
+            }
+
+            if let Some(method) = pending_followups.remove(&response_id) {
+                if let Some(error) = message.get("error") {
+                    let code = error
+                        .get("code")
+                        .and_then(|value| value.as_i64())
+                        .unwrap_or(-1);
+                    let message = error
+                        .get("message")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("unknown error")
+                        .to_string();
+                    return Err(CodexRuntimeError::ServerError {
+                        method: method.to_string(),
+                        code,
+                        message,
+                    });
+                }
+                deadline = Instant::now() + COMMAND_EXEC_TIMEOUT;
+            }
+        }
     }
 
     fn start_turn(&mut self, thread_id: &str, input_text: &str) -> Result<(), CodexRuntimeError> {
@@ -1277,13 +1457,7 @@ impl CodexAppServerProcess {
     where
         P: Serialize,
     {
-        let request = JsonRpcRequest { id, method, params };
-        let mut payload = serde_json::to_vec(&request)?;
-        payload.push(b'\n');
-        self.stdin
-            .write_all(&payload)
-            .map_err(CodexRuntimeError::StdinWrite)?;
-        self.stdin.flush().map_err(CodexRuntimeError::StdinWrite)?;
+        self.send_request_line(id, method, params)?;
 
         let mut deadline = Instant::now() + timing.response_timeout;
 
@@ -1838,9 +2012,40 @@ fn validate_command_exec_params(
         });
     }
 
-    if params.stream_stdout_stderr && params.process_id.is_none() {
+    if (params.stream_stdout_stderr || params.stream_stdin) && params.process_id.is_none() {
         return Err(CodexRuntimeError::InvalidCommandExecParams {
-            message: "streamStdoutStderr requires a client-supplied processId".to_string(),
+            message: "streamStdoutStderr/streamStdin require a client-supplied processId"
+                .to_string(),
+        });
+    }
+
+    Ok(())
+}
+
+fn validate_command_exec_write_params(
+    params: &CodexCommandExecWriteParams,
+) -> Result<(), CodexRuntimeError> {
+    if params.process_id.trim().is_empty() {
+        return Err(CodexRuntimeError::InvalidCommandExecParams {
+            message: "write processId must not be empty".to_string(),
+        });
+    }
+
+    if !params.close_stdin && params.delta_base64.is_none() {
+        return Err(CodexRuntimeError::InvalidCommandExecParams {
+            message: "write request must provide deltaBase64 or closeStdin=true".to_string(),
+        });
+    }
+
+    Ok(())
+}
+
+fn validate_command_exec_terminate_params(
+    params: &CodexCommandExecTerminateParams,
+) -> Result<(), CodexRuntimeError> {
+    if params.process_id.trim().is_empty() {
+        return Err(CodexRuntimeError::InvalidCommandExecParams {
+            message: "terminate processId must not be empty".to_string(),
         });
     }
 
@@ -1884,6 +2089,21 @@ fn parse_command_exec_output_delta(
                 message: format!("missing params field capReached: {params}"),
             })?,
     }))
+}
+
+impl CodexCommandExecControlRequest {
+    fn into_request_parts(self) -> Result<(&'static str, Value), CodexRuntimeError> {
+        match self {
+            CodexCommandExecControlRequest::Write(params) => {
+                validate_command_exec_write_params(&params)?;
+                Ok(("command/exec/write", serde_json::to_value(params)?))
+            }
+            CodexCommandExecControlRequest::Terminate(params) => {
+                validate_command_exec_terminate_params(&params)?;
+                Ok(("command/exec/terminate", serde_json::to_value(params)?))
+            }
+        }
+    }
 }
 
 fn merge_transcript_entry(target: &mut CodexTranscriptEntry, incoming: &CodexTranscriptEntry) {
@@ -2300,6 +2520,7 @@ mod tests {
             cwd: None,
             process_id: None,
             stream_stdout_stderr: false,
+            stream_stdin: false,
         };
 
         let result = exec_codex_command_with_binary(repo.path(), &binary, &params)
@@ -2319,6 +2540,7 @@ mod tests {
             cwd: None,
             process_id: Some("stream-proc-001".to_string()),
             stream_stdout_stderr: true,
+            stream_stdin: false,
         };
         let mut deltas = Vec::new();
 
@@ -2352,6 +2574,7 @@ mod tests {
             cwd: None,
             process_id: None,
             stream_stdout_stderr: true,
+            stream_stdin: false,
         };
         let error = stream_codex_command_with_binary(
             Path::new("/tmp"),
@@ -2360,6 +2583,73 @@ mod tests {
             |_| Ok::<(), std::convert::Infallible>(()),
         )
         .expect_err("streaming command/exec without processId should fail before launch");
+
+        assert!(error.to_string().contains("processId"));
+    }
+
+    #[test]
+    fn command_exec_control_lane_accepts_same_connection_write_and_terminate() {
+        let repo = tempdir().expect("temp repo should exist");
+        let binary = write_command_exec_control_stub_binary(repo.path());
+        let params = CodexCommandExecParams {
+            command: vec!["control-probe".to_string()],
+            cwd: None,
+            process_id: Some("control-proc-001".to_string()),
+            stream_stdout_stderr: true,
+            stream_stdin: true,
+        };
+        let mut seen = Vec::new();
+
+        let result =
+            stream_codex_command_with_control_with_binary(repo.path(), &binary, &params, |delta| {
+                seen.push(delta.delta_base64.clone());
+
+                if delta.delta_base64 == "UkVBRFkK" {
+                    return Ok(Some(CodexCommandExecControlRequest::Write(
+                        CodexCommandExecWriteParams {
+                            process_id: "control-proc-001".to_string(),
+                            delta_base64: Some("UElORwo=".to_string()),
+                            close_stdin: false,
+                        },
+                    )));
+                }
+
+                if delta.delta_base64 == "UElORwo=" {
+                    return Ok(Some(CodexCommandExecControlRequest::Terminate(
+                        CodexCommandExecTerminateParams {
+                            process_id: "control-proc-001".to_string(),
+                        },
+                    )));
+                }
+
+                Ok::<Option<CodexCommandExecControlRequest>, std::convert::Infallible>(None)
+            })
+            .expect("control lane should succeed");
+
+        assert!(seen.iter().any(|chunk| chunk == "UkVBRFkK"));
+        assert!(seen.iter().any(|chunk| chunk == "UElORwo="));
+        assert_eq!(result.stdout, "");
+        assert_eq!(result.stderr, "");
+        assert_ne!(result.exit_code, 0);
+    }
+
+    #[test]
+    fn streaming_command_exec_with_stdin_requires_client_process_id() {
+        let params = CodexCommandExecParams {
+            command: vec!["control-probe".to_string()],
+            cwd: None,
+            process_id: None,
+            stream_stdout_stderr: true,
+            stream_stdin: true,
+        };
+
+        let error = stream_codex_command_with_control_with_binary(
+            Path::new("/tmp"),
+            Path::new("/definitely-unused"),
+            &params,
+            |_| Ok::<Option<CodexCommandExecControlRequest>, std::convert::Infallible>(None),
+        )
+        .expect_err("streamStdin without processId should fail before launch");
 
         assert!(error.to_string().contains("processId"));
     }
@@ -2504,6 +2794,82 @@ if args[:3] == ['app-server', '--listen', 'stdio://']:
                 'exitCode': 0,
                 'stdout': 'BUFFERED-STDOUT\n',
                 'stderr': 'BUFFERED-STDERR\n'
+            }}), flush=True)
+            continue
+        print(json.dumps({'id': msg.get('id', 0), 'error': {'code': -32601, 'message': 'unsupported'}}), flush=True)
+    raise SystemExit(0)
+
+print('unsupported args', args, file=sys.stderr)
+raise SystemExit(1)
+"#;
+        fs::write(&path, script).expect("stub script should write");
+        let mut permissions = fs::metadata(&path)
+            .expect("metadata should exist")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&path, permissions).expect("permissions should update");
+        path
+    }
+
+    fn write_command_exec_control_stub_binary(repo_root: &Path) -> PathBuf {
+        let path = repo_root.join("codex-command-exec-control-stub.py");
+        let script = r#"#!/usr/bin/env python3
+import json
+import sys
+
+write_seen = False
+
+args = sys.argv[1:]
+if args == ['--version']:
+    print('codex-cli 0.123.0-stub')
+    raise SystemExit(0)
+
+if args[:3] == ['app-server', '--listen', 'stdio://']:
+    for raw in sys.stdin:
+        raw = raw.strip()
+        if not raw:
+            continue
+        msg = json.loads(raw)
+        method = msg.get('method')
+        if method == 'initialize':
+            print(json.dumps({'id': msg['id'], 'result': {
+                'userAgent': 'stub-client/0.123.0',
+                'codexHome': '/tmp/codex-home',
+                'platformFamily': 'unix',
+                'platformOs': 'macos'
+            }}), flush=True)
+            continue
+        if method == 'command/exec':
+            process_id = msg['params']['processId']
+            print(json.dumps({'method': 'command/exec/outputDelta', 'params': {
+                'processId': process_id,
+                'stream': 'stdout',
+                'deltaBase64': 'UkVBRFkK',
+                'capReached': False
+            }}), flush=True)
+            continue
+        if method == 'command/exec/write':
+            params = msg['params']
+            assert params['processId'] == 'control-proc-001'
+            assert params['deltaBase64'] == 'UElORwo='
+            print(json.dumps({'id': msg['id'], 'result': {}}), flush=True)
+            print(json.dumps({'method': 'command/exec/outputDelta', 'params': {
+                'processId': params['processId'],
+                'stream': 'stdout',
+                'deltaBase64': 'UElORwo=',
+                'capReached': False
+            }}), flush=True)
+            write_seen = True
+            continue
+        if method == 'command/exec/terminate':
+            params = msg['params']
+            assert write_seen
+            assert params['processId'] == 'control-proc-001'
+            print(json.dumps({'id': msg['id'], 'result': {}}), flush=True)
+            print(json.dumps({'id': 2, 'result': {
+                'exitCode': 143,
+                'stdout': '',
+                'stderr': ''
             }}), flush=True)
             continue
         print(json.dumps({'id': msg.get('id', 0), 'error': {'code': -32601, 'message': 'unsupported'}}), flush=True)

@@ -35,13 +35,15 @@ macos-app
    │  └─ main.swift
    ├─ OpenSlopTerminalInteractionProbe/
    │  └─ main.swift
-   └─ OpenSlopCommandExecProbe/
+   ├─ OpenSlopCommandExecProbe/
+   │  └─ main.swift
+   └─ OpenSlopCommandExecControlProbe/
       └─ main.swift
 ```
 
 Сюда идут задачи про window shell, layout, toolbar, keyboard navigation и рендеринг native surfaces.
 
-Текущий реальный proof target для S04 и S04a:
+Текущий реальный proof target для S04, S04a и S04b:
 - `WorkbenchCore/CoreDaemonClient.swift` держит long-lived stdio transport к `core-daemon --serve-stdio`.
 - `WorkbenchRootView` отправляет live turn, получает successive daemon-owned transcript snapshots, показывает native approval sheet и не владеет runtime truth.
 - `WorkbenchSeed` и `TimelinePanelView` различают `agent`, `command`, `fileChange` и generic `tool`, чтобы command output не превращался в текстовый суп.
@@ -49,3 +51,4 @@ macos-app
 - `OpenSlopApprovalProbe` доказывает live `commandExecution` approval request, typed command transcript item и completed turn после approve.
 - `WorkbenchCore` теперь держит и standalone `command/exec` DTO + client methods для buffered и streaming proof lane.
 - `OpenSlopCommandExecProbe` доказывает отдельный contour: buffered final stdout/stderr, streaming output events с client-supplied `processId` и пустой final `stdout/stderr` после streaming.
+- `OpenSlopCommandExecControlProbe` доказывает следующий law: one same-connection streaming exec принимает follow-up `write`, echo'ит `PING`, потом завершается через follow-up `terminate`.
