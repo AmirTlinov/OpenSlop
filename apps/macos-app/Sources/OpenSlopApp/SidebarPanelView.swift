@@ -2,19 +2,39 @@ import SwiftUI
 import WorkbenchCore
 
 struct SidebarPanelView: View {
+    private enum Queue {
+        case inProgress
+        case attention
+        case receipt
+        case done
+        case archive
+    }
+
     let sessions: [DaemonSessionSummary]
     @Binding var selectedSessionID: DaemonSessionSummary.ID?
     let loadSummary: String
+    let draftProvider: String
+    let onStartTask: () -> Void
+    let isStartDisabled: Bool
 
-    private var pinnedSessions: [DaemonSessionSummary] {
-        Array(sessions.prefix(6))
+    private var inProgressSessions: [DaemonSessionSummary] {
+        sessions.filter { queue(for: $0) == .inProgress }
     }
 
-    private var liveSessions: [DaemonSessionSummary] {
-        sessions.filter {
-            ($0.id.count == 36 && $0.id.filter { $0 == "-" }.count >= 4)
-                || ($0.provider == "Claude" && $0.status.hasPrefix("receipt_"))
-        }
+    private var attentionSessions: [DaemonSessionSummary] {
+        sessions.filter { queue(for: $0) == .attention }
+    }
+
+    private var receiptSessions: [DaemonSessionSummary] {
+        sessions.filter { queue(for: $0) == .receipt }
+    }
+
+    private var doneSessions: [DaemonSessionSummary] {
+        sessions.filter { queue(for: $0) == .done }
+    }
+
+    private var archiveSessions: [DaemonSessionSummary] {
+        sessions.filter { queue(for: $0) == .archive }
     }
 
     private var workspaceNames: [String] {
@@ -24,20 +44,53 @@ struct SidebarPanelView: View {
     var body: some View {
         List(selection: $selectedSessionID) {
             Section {
-                sidebarAction("Новая session", systemImage: "square.and.pencil", detail: "provider start")
-                sidebarAction("Поиск", systemImage: "magnifyingglass", detail: "S11")
-                sidebarAction("Плагины", systemImage: "circle.grid.2x2", detail: "planned")
-                sidebarAction("Автоматизации", systemImage: "clock", detail: "planned")
+                Button(action: onStartTask) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "square.and.pencil")
+                            .frame(width: 18)
+                            .foregroundStyle(.secondary)
+                        Text("Новая задача")
+                        Spacer()
+                        Text(draftProvider)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(.quaternary, in: Capsule())
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(isStartDisabled)
             }
 
-            Section("Закреплённые") {
-                if pinnedSessions.isEmpty {
-                    Text("Появятся после загрузки session list")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(pinnedSessions) { session in
-                        sessionRow(session, compact: true)
+            if !inProgressSessions.isEmpty {
+                Section("В работе") {
+                    ForEach(inProgressSessions) { session in
+                        sessionRow(session, compact: false)
+                    }
+                }
+            }
+
+            if !attentionSessions.isEmpty {
+                Section("Нужно внимание") {
+                    ForEach(attentionSessions) { session in
+                        sessionRow(session, compact: false)
+                    }
+                }
+            }
+
+            if !receiptSessions.isEmpty {
+                Section("Готовые итоги") {
+                    ForEach(receiptSessions) { session in
+                        sessionRow(session, compact: false)
+                    }
+                }
+            }
+
+            if !doneSessions.isEmpty {
+                Section("Готово") {
+                    ForEach(doneSessions) { session in
+                        sessionRow(session, compact: false)
                     }
                 }
             }
@@ -54,14 +107,16 @@ struct SidebarPanelView: View {
                 }
             }
 
-            Section("Сессии") {
-                if sessions.isEmpty {
-                    Text(loadSummary)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(liveSessions.isEmpty ? sessions : liveSessions) { session in
-                        sessionRow(session, compact: false)
+            if sessions.isEmpty || !archiveSessions.isEmpty {
+                Section("Архив") {
+                    if sessions.isEmpty {
+                        Text(loadSummary)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(archiveSessions) { session in
+                            sessionRow(session, compact: false)
+                        }
                     }
                 }
             }
@@ -79,24 +134,6 @@ struct SidebarPanelView: View {
             .padding(.vertical, 12)
             .background(.bar)
         }
-    }
-
-    private func sidebarAction(_ title: String, systemImage: String, detail: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: systemImage)
-                .frame(width: 18)
-                .foregroundStyle(.secondary)
-            Text(title)
-                .font(.callout)
-            Spacer()
-            Text(detail)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(detail == "provider start" ? .secondary : .tertiary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(.quaternary, in: Capsule())
-        }
-        .foregroundStyle(detail == "provider start" ? .primary : .secondary)
     }
 
     private func sessionRow(_ session: DaemonSessionSummary, compact: Bool) -> some View {
@@ -130,6 +167,21 @@ struct SidebarPanelView: View {
             return "в работе"
         default:
             return status.replacingOccurrences(of: "_", with: " ")
+        }
+    }
+
+    private func queue(for session: DaemonSessionSummary) -> Queue {
+        switch session.status {
+        case "in_progress", "needs_first_turn":
+            return .inProgress
+        case "receipt_failed", "failed", "blocked", "dirty":
+            return .attention
+        case "receipt_proven":
+            return .receipt
+        case "done", "persisted":
+            return .done
+        default:
+            return .archive
         }
     }
 }

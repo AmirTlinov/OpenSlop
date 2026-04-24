@@ -101,7 +101,7 @@ struct WorkbenchRootView: View {
     @State private var isClaudeProofRunning = false
     @State private var claudeReceiptSnapshot: DaemonClaudeReceiptSnapshot?
     @State private var claudeReceiptError: String?
-    @State private var inspectorTab: InspectorPanelTab = .summary
+    @State private var inspectorTab: InspectorPanelTab = .plan
     @State private var commandExecContinuation: CheckedContinuation<DaemonCodexCommandExecControlRequest?, Never>?
     @State private var commandExecAllowsMoreControls = false
     @State private var commandExecResizeSent = false
@@ -266,7 +266,12 @@ struct WorkbenchRootView: View {
             SidebarPanelView(
                 sessions: sessions,
                 selectedSessionID: $shellState.selectedSessionID,
-                loadSummary: loadState.summary
+                loadSummary: loadState.summary,
+                draftProvider: shellState.selectedProvider,
+                onStartTask: {
+                    Task { await startProviderSession() }
+                },
+                isStartDisabled: !canStartProviderSession
             )
             .navigationSplitViewColumnWidth(
                 min: CGFloat(WorkbenchShellLayoutGeometry.sidebarWidthRange.lowerBound),
@@ -293,8 +298,9 @@ struct WorkbenchRootView: View {
                         emptyState: currentTimelineEmptyState,
                         promptText: $promptText,
                         claudeReceiptPromptText: $claudeReceiptPromptText,
-                        selectedProvider: shellState.selectedProvider,
-                        selectedEffort: shellState.selectedEffort,
+                        selectedProvider: $shellState.selectedProvider,
+                        selectedModel: $shellState.selectedModel,
+                        selectedEffort: $shellState.selectedEffort,
                         claudeRuntimeStatus: claudeRuntimeStatus,
                         claudeRuntimeError: claudeRuntimeError,
                         isClaudeRuntimeLoading: isClaudeRuntimeLoading,
@@ -319,6 +325,7 @@ struct WorkbenchRootView: View {
                                 pendingApproval: pendingApproval,
                                 claudeReceiptSnapshot: claudeReceiptSnapshot
                             ),
+                            selectedSession: selectedSession,
                             selectedProvider: shellState.selectedProvider,
                             terminalSurface: DaemonCodexTerminalSurfaceProjector.liveSurface(from: transcript),
                             gitReviewSnapshot: gitReviewSnapshot,
@@ -370,6 +377,7 @@ struct WorkbenchRootView: View {
                     ComposerBarView(
                         promptText: $promptText,
                         selectedProvider: $shellState.selectedProvider,
+                        selectedModel: $shellState.selectedModel,
                         selectedEffort: $shellState.selectedEffort,
                         claudeRuntimeStatus: claudeRuntimeStatus,
                         claudeRuntimeError: claudeRuntimeError,
@@ -383,26 +391,6 @@ struct WorkbenchRootView: View {
             }
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
-                    Picker("Provider", selection: $shellState.selectedProvider) {
-                        Text("Codex").tag("Codex")
-                        Text("Claude").tag("Claude")
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 180)
-
-                    Button("Обновить") {
-                        Task {
-                            await loadSessions(force: true, preferredSessionID: shellState.selectedSessionID)
-                            await loadGitReview(selectedPath: gitReviewSelectedPath)
-                            await loadClaudeRuntimeStatus()
-                        }
-                    }
-                    .keyboardShortcut("r", modifiers: .command)
-                    Button(shellState.selectedProvider == "Claude" ? "Claude receipt" : "Запустить") {
-                        Task { await startProviderSession() }
-                    }
-                    .disabled(!canStartProviderSession)
-                    .keyboardShortcut("n", modifiers: .command)
                     Button(shellState.isInspectorVisible ? "Скрыть inspector" : "Показать inspector") {
                         shellState.isInspectorVisible.toggle()
                     }

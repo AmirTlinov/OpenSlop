@@ -1,0 +1,15 @@
+flowchart LR
+  Toolbar[Toolbar] --> T1[Inspector toggle: local setting]
+  Sidebar[Sidebar] --> S1[Task queues: session projection]
+  Center[Timeline] --> C1[Transcript/receipt: daemon facts]
+  Composer[Composer] --> P1[Provider/model/effort: local draft]
+  Inspector[Inspector] --> I1[Plan: honest unknown until projection]
+  Inspector --> I2[Следы: git/terminal/receipt facts]
+
+  classDef fact fill:#d9f7df,stroke:#55a868,color:#123;
+  classDef local fill:#e6f0ff,stroke:#5b8def,color:#123;
+  classDef unknown fill:#fff4cc,stroke:#d6a500,color:#123;
+
+  class S1,C1,I2 fact;
+  class T1,P1 local;
+  class I1 unknown;

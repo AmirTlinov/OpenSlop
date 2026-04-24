@@ -5,8 +5,9 @@ struct WorkbenchStartSurfaceView: View {
     let emptyState: WorkbenchTimelineEmptyState
     @Binding var promptText: String
     @Binding var claudeReceiptPromptText: String
-    let selectedProvider: String
-    let selectedEffort: String
+    @Binding var selectedProvider: String
+    @Binding var selectedModel: String
+    @Binding var selectedEffort: String
     let claudeRuntimeStatus: DaemonClaudeRuntimeStatus?
     let claudeRuntimeError: String?
     let isClaudeRuntimeLoading: Bool
@@ -44,6 +45,8 @@ struct WorkbenchStartSurfaceView: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 620)
             }
+
+            startProfileRow
 
             if selectedProvider == "Claude" {
                 claudeReceiptSurface
@@ -120,20 +123,6 @@ struct WorkbenchStartSurfaceView: View {
                 Label(workspaceTitle, systemImage: "folder")
                 Label(branchTitle, systemImage: "point.3.connected.trianglepath.dotted")
                 Spacer(minLength: 0)
-                Menu {
-                    Text("Provider truth приходит из текущего shell state.")
-                } label: {
-                    Label(selectedProvider, systemImage: "sparkles")
-                }
-                .menuStyle(.borderlessButton)
-
-                Menu {
-                    Text("Effort пока shell-level preference.")
-                } label: {
-                    Label(selectedEffort, systemImage: "slider.horizontal.3")
-                }
-                .menuStyle(.borderlessButton)
-
                 Button(action: onSubmit) {
                     Image(systemName: "arrow.up")
                         .font(.headline)
@@ -274,5 +263,65 @@ struct WorkbenchStartSurfaceView: View {
 
     private var claudeStatusIcon: String {
         claudeRuntimeStatus?.available == true ? "checkmark.seal" : "exclamationmark.triangle"
+    }
+
+    private var startProfileRow: some View {
+        HStack(spacing: 8) {
+            startProfileMenu(title: selectedProvider, systemImage: "sparkles") {
+                Picker("Agent", selection: $selectedProvider) {
+                    Text("Codex").tag("Codex")
+                    Text("Claude").tag("Claude")
+                }
+            }
+
+            startProfileMenu(title: selectedModel, systemImage: "cpu") {
+                Picker("Model", selection: $selectedModel) {
+                    ForEach(models(for: selectedProvider), id: \.self) { model in
+                        Text(model).tag(model)
+                    }
+                }
+            }
+
+            startProfileMenu(title: selectedEffort, systemImage: "slider.horizontal.3") {
+                Picker("Effort", selection: $selectedEffort) {
+                    Text("Medium").tag("Medium")
+                    Text("High").tag("High")
+                    Text("Max").tag("Max")
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .font(.callout.weight(.medium))
+        .frame(maxWidth: 720, alignment: .leading)
+    }
+
+    private func startProfileMenu<Content: View>(
+        title: String,
+        systemImage: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        Menu {
+            content()
+        } label: {
+            Label(title, systemImage: systemImage)
+                .lineLimit(1)
+        }
+        .menuStyle(.borderlessButton)
+        .onChange(of: selectedProvider) { _, provider in
+            guard models(for: provider).contains(selectedModel) else {
+                selectedModel = WorkbenchShellState.defaultModel
+                return
+            }
+        }
+    }
+
+    private func models(for provider: String) -> [String] {
+        switch provider {
+        case "Claude":
+            return [WorkbenchShellState.defaultModel, "claude-haiku", "claude-sonnet", "claude-opus"]
+        default:
+            return [WorkbenchShellState.defaultModel, "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex"]
+        }
     }
 }

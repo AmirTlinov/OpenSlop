@@ -43,6 +43,7 @@ public struct WorkbenchShellLayoutGeometry: Codable, Equatable, Sendable {
 public struct WorkbenchShellState: Codable, Equatable, Sendable {
     public var selectedSessionID: String?
     public var selectedProvider: String
+    public var selectedModel: String
     public var selectedEffort: String
     public var isInspectorVisible: Bool
     public var layout: WorkbenchShellLayoutGeometry
@@ -50,20 +51,25 @@ public struct WorkbenchShellState: Codable, Equatable, Sendable {
     public init(
         selectedSessionID: String?,
         selectedProvider: String,
+        selectedModel: String = Self.defaultModel,
         selectedEffort: String,
         isInspectorVisible: Bool,
         layout: WorkbenchShellLayoutGeometry = .default
     ) {
         self.selectedSessionID = selectedSessionID
         self.selectedProvider = selectedProvider
+        self.selectedModel = selectedModel
         self.selectedEffort = selectedEffort
         self.isInspectorVisible = isInspectorVisible
         self.layout = layout
     }
 
+    public static let defaultModel = "Auto"
+
     public static let `default` = Self(
         selectedSessionID: nil,
         selectedProvider: "Codex",
+        selectedModel: defaultModel,
         selectedEffort: "High",
         isInspectorVisible: true,
         layout: .default
@@ -72,6 +78,7 @@ public struct WorkbenchShellState: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case selectedSessionID
         case selectedProvider
+        case selectedModel
         case selectedEffort
         case isInspectorVisible
         case layout
@@ -81,6 +88,7 @@ public struct WorkbenchShellState: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         selectedSessionID = try container.decodeIfPresent(String.self, forKey: .selectedSessionID)
         selectedProvider = try container.decodeIfPresent(String.self, forKey: .selectedProvider) ?? Self.default.selectedProvider
+        selectedModel = try container.decodeIfPresent(String.self, forKey: .selectedModel) ?? Self.default.selectedModel
         selectedEffort = try container.decodeIfPresent(String.self, forKey: .selectedEffort) ?? Self.default.selectedEffort
         isInspectorVisible = try container.decodeIfPresent(Bool.self, forKey: .isInspectorVisible) ?? Self.default.isInspectorVisible
         layout = try container.decodeIfPresent(WorkbenchShellLayoutGeometry.self, forKey: .layout) ?? .default
@@ -90,6 +98,7 @@ public struct WorkbenchShellState: Codable, Equatable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(selectedSessionID, forKey: .selectedSessionID)
         try container.encode(selectedProvider, forKey: .selectedProvider)
+        try container.encode(selectedModel, forKey: .selectedModel)
         try container.encode(selectedEffort, forKey: .selectedEffort)
         try container.encode(isInspectorVisible, forKey: .isInspectorVisible)
         try container.encode(layout, forKey: .layout)
@@ -124,6 +133,10 @@ public struct WorkbenchShellState: Codable, Equatable, Sendable {
 
         if value.selectedProvider.isEmpty {
             value.selectedProvider = Self.default.selectedProvider
+        }
+
+        if value.selectedModel.isEmpty {
+            value.selectedModel = Self.default.selectedModel
         }
 
         if value.selectedEffort.isEmpty {

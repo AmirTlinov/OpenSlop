@@ -20,6 +20,7 @@ struct OpenSlopShellStateProbe {
         let initial = WorkbenchShellState(
             selectedSessionID: "session-2",
             selectedProvider: "Claude",
+            selectedModel: "claude-haiku",
             selectedEffort: "Max",
             isInspectorVisible: false,
             layout: layout
@@ -29,6 +30,7 @@ struct OpenSlopShellStateProbe {
         let restored = WorkbenchShellStateStore.load(defaults: defaults)
 
         print("restored_provider=\(restored.selectedProvider)")
+        print("restored_model=\(restored.selectedModel)")
         print("restored_effort=\(restored.selectedEffort)")
         print("restored_session=\(restored.selectedSessionID ?? "nil")")
         print("restored_inspector=\(restored.isInspectorVisible)")
@@ -43,6 +45,7 @@ struct OpenSlopShellStateProbe {
         let unsafe = WorkbenchShellState(
             selectedSessionID: "session-2",
             selectedProvider: "Claude",
+            selectedModel: "",
             selectedEffort: "Max",
             isInspectorVisible: false,
             layout: WorkbenchShellLayoutGeometry(
@@ -57,6 +60,7 @@ struct OpenSlopShellStateProbe {
         print("sanitized_window=\(Int(sanitized.layout.windowWidth))x\(Int(sanitized.layout.windowHeight))")
         print("sanitized_sidebar=\(Int(sanitized.layout.sidebarWidth))")
         print("sanitized_inspector_width=\(Int(sanitized.layout.inspectorWidth))")
+        print("sanitized_model=\(sanitized.selectedModel)")
 
         guard sanitized.layout == WorkbenchShellLayoutGeometry(
             windowWidth: WorkbenchShellLayoutGeometry.windowWidthRange.upperBound,
@@ -67,13 +71,22 @@ struct OpenSlopShellStateProbe {
             fail("layout geometry was not sanitized to safe shell bounds.")
         }
 
+        guard sanitized.selectedModel == WorkbenchShellState.defaultModel else {
+            fail("empty selected model was not sanitized to default model.")
+        }
+
         let legacyJSON = #"{"selectedSessionID":"legacy-session","selectedProvider":"Codex","selectedEffort":"High","isInspectorVisible":true}"#
         defaults.set(Data(legacyJSON.utf8), forKey: WorkbenchShellStateStore.storageKey)
         let legacyRestored = WorkbenchShellStateStore.load(defaults: defaults)
+        print("legacy_model=\(legacyRestored.selectedModel)")
         print("legacy_layout=\(Int(legacyRestored.layout.windowWidth))x\(Int(legacyRestored.layout.windowHeight));sidebar=\(Int(legacyRestored.layout.sidebarWidth));inspector=\(Int(legacyRestored.layout.inspectorWidth))")
 
         guard legacyRestored.layout == .default else {
             fail("legacy shell state without layout did not load with default geometry.")
+        }
+
+        guard legacyRestored.selectedModel == WorkbenchShellState.defaultModel else {
+            fail("legacy shell state without selectedModel did not load with default model.")
         }
 
         let available = ["session-1", "session-2", "019dbb-shell-live-1", "019dbb-shell-live-2"]

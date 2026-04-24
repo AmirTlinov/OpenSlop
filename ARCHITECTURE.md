@@ -64,3 +64,8 @@ Providers не сплющиваются до message-in/message-out. У кажд
 - `ROADMAP.md` — flagship-путь;
 - `docs/architecture/*.mmd` — схемы и topology;
 - `plans/slices/*` — детали выполнения.
+
+
+## UI projection discipline
+
+GUI показывает только три вида данных: daemon-owned facts, app-owned local settings и честные unknown states. Planned browser, harness, map и verify surfaces не должны выглядеть как готовые runtime-фичи до появления owning projections. Composer владеет draft execution profile, а session projection владеет правдой уже созданной сессии.

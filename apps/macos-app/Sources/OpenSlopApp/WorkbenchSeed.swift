@@ -3,12 +3,12 @@ import WorkbenchCore
 
 struct TimelineItemSeed: Identifiable, Hashable {
     enum Kind: String {
-        case user = "User"
-        case agent = "Agent"
-        case command = "Command"
-        case fileChange = "Files"
-        case tool = "Tool"
-        case verify = "Verify"
+        case user = "Вы"
+        case agent = "Агент"
+        case command = "Команда"
+        case fileChange = "Файлы"
+        case tool = "Действие"
+        case verify = "Итог"
     }
 
     let id: String
@@ -78,8 +78,8 @@ struct WorkbenchSeed {
                         id: "\(session.id)-receipt-detail",
                         kind: .verify,
                         title: claudeReceiptSnapshot.proof.success
-                            ? "Claude receipt proven · \(shortTimelineValue(claudeReceiptSnapshot.proof.resultText))"
-                            : "Claude receipt failed",
+                            ? "Готово. Claude receipt сохранён."
+                            : "Claude receipt завершился ошибкой",
                         detail: claudeReceiptDetail(for: claudeReceiptSnapshot),
                         secondaryDetail: claudeReceiptSecondaryDetail(for: claudeReceiptSnapshot),
                         prefersMonospacedDetail: false
@@ -92,7 +92,7 @@ struct WorkbenchSeed {
                     TimelineItemSeed(
                         id: "\(session.id)-receipt-detail-unavailable",
                         kind: .verify,
-                        title: "Claude receipt detail unavailable",
+                        title: "Детали Claude receipt недоступны",
                         detail: claudeReceiptError,
                         secondaryDetail: "Read-only session summary still exists. Диалоговый режим остаётся закрыт.",
                         prefersMonospacedDetail: false
@@ -104,7 +104,7 @@ struct WorkbenchSeed {
                 TimelineItemSeed(
                     id: "\(session.id)-receipt",
                     kind: .verify,
-                    title: session.status == "receipt_proven" ? "Claude receipt proven" : "Claude receipt failed",
+                    title: session.status == "receipt_proven" ? "Готово. Claude receipt есть." : "Claude receipt failed",
                     detail: session.status == "receipt_proven"
                         ? "Daemon-owned receipt snapshot загружается. Это read-only latest receipt."
                         : "Claude receipt path завершился fail-closed. Диалоговый режим остаётся закрыт.",

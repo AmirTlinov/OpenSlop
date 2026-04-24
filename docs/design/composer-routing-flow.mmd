@@ -1,0 +1,10 @@
+flowchart LR
+  User[User intent] --> Composer[Composer draft]
+  Composer --> Provider[Provider chip]
+  Composer --> Model[Model chip]
+  Composer --> Effort[Effort chip]
+  Composer --> Submit{Submit}
+  Submit -->|Codex live session| CodexTurn[Submit Codex turn]
+  Submit -->|Codex new task| CodexStart[Start Codex session]
+  Submit -->|Claude receipt-only| ClaudeReceipt[Materialize Claude receipt]
+  Submit -->|Unsupported| Blocked[Fail-closed status]

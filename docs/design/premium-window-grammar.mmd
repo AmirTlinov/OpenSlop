@@ -1,0 +1,12 @@
+flowchart TB
+  Window[OpenSlop window]
+  Window --> Toolbar[Quiet toolbar]
+  Window --> Body[Split workbench]
+  Body --> Sidebar[Sidebar: Today / In progress / Attention / Receipts / Projects]
+  Body --> Timeline[Center: calm task narrative]
+  Body --> Context[Context inspector]
+  Timeline --> Composer[Composer: prompt + agent + model + effort]
+  Context --> Plan[Plan]
+  Context --> Evidence[Следы]
+  Context -. later .-> Map[Agent map]
+  Context -. later .-> Browser[Browser preview]

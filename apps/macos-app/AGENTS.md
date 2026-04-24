@@ -93,10 +93,15 @@ macos-app
 
 Сюда идут задачи про window shell, layout, toolbar, keyboard navigation и рендеринг native surfaces.
 
+S01e law:
+- Toolbar не владеет provider/model selection. Это живёт в composer/start surface.
+- Planned browser/verify/map/files не показываются как primary tabs без owning projection.
+- Evidence surfaces можно держать в inspector, но они не должны доминировать над центральным timeline.
+
 Текущий реальный proof target для S04 sub-slices:
 - `WorkbenchCore/CoreDaemonClient.swift` держит long-lived stdio transport к `core-daemon --serve-stdio`.
 - `WorkbenchRootView` отправляет live turn, получает successive daemon-owned transcript snapshots, показывает native approval sheet и не владеет runtime truth.
-- `WorkbenchCore/WorkbenchShellState.swift` держит app-owned shell state для selection/provider/effort/inspector visibility и не лезет в runtime truth.
+- `WorkbenchCore/WorkbenchShellState.swift` держит app-owned shell state для selection/provider/model/effort/inspector visibility и не лезет в runtime truth.
 - `WorkbenchSeed` и `TimelinePanelView` различают `agent`, `command`, `fileChange` и generic `tool`, чтобы command output не превращался в текстовый суп.
 - `SidebarPanelView` уже materialize'ит native empty state для пустого session list, а shell actions получили keyboard path для refresh/start/submit/toggle inspector.
 - `OpenSlopShellStateProbe` доказывает save/load/reconcile для persisted shell state без запуска window automation.

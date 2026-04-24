@@ -6,11 +6,11 @@ OpenSlop должен выглядеть как быстрый и взрослы
 
 ## Базовая анатомия окна
 
-Окно делится на четыре рабочих зоны:
-1. `sidebar` — проекты, сессии, очереди, pinned и running lanes;
-2. `timeline` — центральная narrative-поверхность текущей сессии;
-3. `inspector` — verify, diff, browser, files, artifacts, metrics;
-4. `composer` — нижняя командная панель с provider, model, effort, policy и prompt.
+Окно делится на четыре рабочие зоны:
+1. `sidebar` — спокойная карта задач: сегодня, в работе, нужно внимание, готовые итоги, проекты;
+2. `timeline` — центральная narrative-поверхность текущей работы;
+3. `inspector` — контекст по запросу: план и следы, позже map/browser/files;
+4. `composer` — нижняя командная панель, где выбираются agent, model, effort, policy и prompt.
 
 ## Что делает интерфейс нативным
 
@@ -26,16 +26,22 @@ OpenSlop должен выглядеть как быстрый и взрослы
 - Один сильный фокус на экране. Нет десятка равноправных карточек.
 - Типографика сильнее декоративного хрома.
 - Sidebar, timeline и inspector должны читаться с первого взгляда.
-- Browser и diff — это first-class surfaces, не всплывающие игрушки.
-- Verify состояния должны читаться моментально: `PASS`, `FAIL`, `UNKNOWN`, `STALE`, `BLOCKED`, `DEGRADED`.
+- Toolbar не владеет provider/model selection. Это живёт в composer рядом с намерением пользователя.
+- Browser, map и files появляются как first-class surfaces только когда за ними есть projection.
+- Verify не показывается как главный tab до harness/verify доменов. На поверхности остаются короткие human signals: `готово`, `нужно внимание`, `не доказано`, `устарело`.
 
 ## Антипаттерны
 
 - вложенные rounded-card гробы;
 - стеклянный шум ради моды;
 - giant markdown wall вместо операционного UI;
+- fake planned tabs как будто они уже live;
 - смешивание agent stream, terminal dump и verify-сигналов в один текстовый суп;
 - pixel-perfect зависимость от одного референса.
+
+## Premium minimalism rule
+
+Главный экран показывает работу, а не внутреннюю кухню. Доказательства остаются доступными во `Следах`, но не доминируют над разговором. Любой visible элемент должен быть `live fact`, `local setting`, `real command` или честный `unknown`. Planned-only поверхности не занимают primary UI.
 
 ## Visual conformance
 

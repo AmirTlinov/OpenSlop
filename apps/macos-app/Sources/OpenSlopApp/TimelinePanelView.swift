@@ -9,8 +9,9 @@ struct TimelinePanelView: View {
     let emptyState: WorkbenchTimelineEmptyState?
     @Binding var promptText: String
     @Binding var claudeReceiptPromptText: String
-    let selectedProvider: String
-    let selectedEffort: String
+    @Binding var selectedProvider: String
+    @Binding var selectedModel: String
+    @Binding var selectedEffort: String
     let claudeRuntimeStatus: DaemonClaudeRuntimeStatus?
     let claudeRuntimeError: String?
     let isClaudeRuntimeLoading: Bool
@@ -26,8 +27,9 @@ struct TimelinePanelView: View {
                     emptyState: emptyState,
                     promptText: $promptText,
                     claudeReceiptPromptText: $claudeReceiptPromptText,
-                    selectedProvider: selectedProvider,
-                    selectedEffort: selectedEffort,
+                    selectedProvider: $selectedProvider,
+                    selectedModel: $selectedModel,
+                    selectedEffort: $selectedEffort,
                     claudeRuntimeStatus: claudeRuntimeStatus,
                     claudeRuntimeError: claudeRuntimeError,
                     isClaudeRuntimeLoading: isClaudeRuntimeLoading,
@@ -67,14 +69,6 @@ struct TimelinePanelView: View {
             Divider()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(transcriptSummary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
-
                 LazyVStack(alignment: .leading, spacing: 14) {
                     ForEach(timeline) { item in
                         VStack(alignment: .leading, spacing: 6) {
@@ -115,8 +109,25 @@ struct TimelinePanelView: View {
 
     private var headerSubtitle: String {
         if let session {
-            return "\(session.workspace) · \(session.branch) · \(session.provider) · \(session.status)"
+            return "\(session.workspace) · \(session.branch) · \(session.provider) · \(humanStatus(session.status))"
         }
         return loadSummary
+    }
+
+    private func humanStatus(_ status: String) -> String {
+        switch status {
+        case "needs_first_turn":
+            return "ждёт первого сообщения"
+        case "notLoaded":
+            return "архив"
+        case "in_progress":
+            return "в работе"
+        case "receipt_proven":
+            return "receipt готов"
+        case "receipt_failed":
+            return "receipt failed"
+        default:
+            return status.replacingOccurrences(of: "_", with: " ")
+        }
     }
 }

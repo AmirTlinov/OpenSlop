@@ -2,23 +2,22 @@ import SwiftUI
 import WorkbenchCore
 
 enum InspectorPanelTab: String, CaseIterable, Identifiable {
-    case summary = "Сводка"
-    case verify = "Проверка"
-    case browser = "Браузер"
+    case plan = "План"
+    case evidence = "Следы"
 
     var id: String { rawValue }
 
     var systemImage: String {
         switch self {
-        case .summary: "list.bullet.rectangle"
-        case .verify: "checklist"
-        case .browser: "globe"
+        case .plan: "list.bullet.rectangle"
+        case .evidence: "checkmark.seal"
         }
     }
 }
 
 struct InspectorPanelView: View {
     let cards: [InspectorCardSeed]
+    let selectedSession: DaemonSessionSummary?
     let selectedProvider: String
     let terminalSurface: DaemonCodexTerminalSurface?
     let gitReviewSnapshot: DaemonGitReviewSnapshot?
@@ -72,19 +71,62 @@ struct InspectorPanelView: View {
 
             Group {
                 switch selectedTab {
-                case .summary:
-                    summaryPane
-                case .verify:
-                    verifyPane
-                case .browser:
-                    browserPane
+                case .plan:
+                    planPane
+                case .evidence:
+                    evidencePane
                 }
             }
         }
         .background(.bar)
     }
 
-    private var summaryPane: some View {
+    private var planPane: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "target")
+                            .foregroundStyle(.secondary)
+                        Text("Текущая работа")
+                            .font(.headline)
+                    }
+
+                    Text(currentWorkTitle)
+                        .font(.title3.weight(.semibold))
+                        .lineLimit(2)
+
+                    Text(currentWorkDetail)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 10) {
+                    planMarker("Реализация", value: selectedStatusValue, systemImage: "hammer")
+                    planMarker("Локальная проверка", value: localProofValue, systemImage: "checkmark.seal")
+                    planMarker("Ревью субагентом", value: "UNKNOWN", systemImage: "person.2")
+                    planMarker("Визуальная сверка", value: "UNKNOWN", systemImage: "rectangle.on.rectangle")
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                ContentUnavailableView(
+                    "Active plan projection ещё не подключён",
+                    systemImage: "map",
+                    description: Text("Этот экран больше не притворяется полной проверкой. Вертикальные слайсы и review markers должны прийти из daemon-owned projection в S10a/S12a.")
+                )
+                .padding(.top, 10)
+            }
+            .padding(16)
+        }
+    }
+
+    private var evidencePane: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12) {
                 if selectedProvider == "Claude" {
@@ -145,63 +187,6 @@ struct InspectorPanelView: View {
         }
     }
 
-    private var verifyPane: some View {
-        VStack(spacing: 0) {
-            verifyRow("Git snapshot", state: gitReviewSnapshot?.statusState.uppercased() ?? "UNKNOWN", systemImage: "point.3.connected.trianglepath.dotted")
-            Divider()
-            verifyRow("Runtime transcript", state: cards.first(where: { $0.id == "turns" })?.value == "0" ? "UNKNOWN" : "OBSERVED", systemImage: "text.bubble")
-            Divider()
-            verifyRow("Harness gates", state: "PLANNED S09/S10", systemImage: "checkmark.seal")
-            Spacer()
-            ContentUnavailableView(
-                "Проверка ещё не harness",
-                systemImage: "checklist.unchecked",
-                description: Text("Этот таб честно показывает только текущие известные сигналы. Полный fail-closed verify появится в S09/S10.")
-            )
-            .padding(24)
-            Spacer()
-        }
-        .background(Color(nsColor: .textBackgroundColor))
-    }
-
-    private var browserPane: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: "chevron.left")
-                    .foregroundStyle(.tertiary)
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(.tertiary)
-                Image(systemName: "arrow.clockwise")
-                    .foregroundStyle(.secondary)
-                TextField("Введите URL", text: .constant(""))
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(true)
-                Image(systemName: "arrow.up.right")
-                    .foregroundStyle(.secondary)
-            }
-            .padding(14)
-
-            Divider()
-
-            ZStack {
-                Color(nsColor: .textBackgroundColor)
-                VStack(spacing: 10) {
-                    Image(systemName: "globe")
-                        .font(.system(size: 30))
-                        .foregroundStyle(.tertiary)
-                    Text("Пустая страница")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
-                    Text("Native preview browser запланирован в S07. Сейчас этот таб только резервирует правильную поверхность.")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 280)
-                }
-            }
-        }
-    }
-
     private var humanCards: [InspectorCardSeed] {
         cards.compactMap { card in
             switch card.id {
@@ -225,22 +210,49 @@ struct InspectorPanelView: View {
         }
     }
 
-    private func verifyRow(_ title: String, state: String, systemImage: String) -> some View {
+    private var currentWorkTitle: String {
+        selectedSession?.title ?? "Новая задача"
+    }
+
+    private var currentWorkDetail: String {
+        let provider = cardValue("provider") ?? selectedProvider
+        let branch = cardValue("branch") ?? "—"
+        let turns = cardValue("turns") ?? "0"
+        return "\(provider) · \(branch) · \(turns) наблюдаемых ходов. Подробные доказательства лежат во вкладке «Следы»."
+    }
+
+    private var selectedStatusValue: String {
+        if let approval = cardValue("approval"), !approval.isEmpty {
+            return "NEEDS APPROVAL"
+        }
+        if let turns = cardValue("turns"), turns != "0" {
+            return "OBSERVED"
+        }
+        return "UNKNOWN"
+    }
+
+    private var localProofValue: String {
+        gitReviewSnapshot?.statusState.uppercased() ?? "UNKNOWN"
+    }
+
+    private func cardValue(_ id: String) -> String? {
+        cards.first(where: { $0.id == id })?.value
+    }
+
+    private func planMarker(_ title: String, value: String, systemImage: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: systemImage)
                 .foregroundStyle(.secondary)
             Text(title)
             Spacer()
-            Text(state)
+            Text(value)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(state == "DIRTY" || state == "UNKNOWN" ? .orange : .secondary)
+                .foregroundStyle(value == "UNKNOWN" || value == "DIRTY" ? .orange : .secondary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background(.quaternary, in: Capsule())
         }
         .font(.callout)
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
     }
 
     private func shortValue(_ value: String) -> String {
