@@ -101,6 +101,9 @@ struct WorkbenchRootView: View {
     @State private var executionProfileStatus: DaemonExecutionProfileStatus?
     @State private var executionProfileError: String?
     @State private var isExecutionProfileLoading = false
+    @State private var activePlanProjection: DaemonActivePlanProjection?
+    @State private var activePlanError: String?
+    @State private var isActivePlanLoading = false
     @State private var isClaudeProofRunning = false
     @State private var claudeReceiptSnapshot: DaemonClaudeReceiptSnapshot?
     @State private var claudeReceiptError: String?
@@ -341,7 +344,6 @@ struct WorkbenchRootView: View {
                                 pendingApproval: pendingApproval,
                                 claudeReceiptSnapshot: claudeReceiptSnapshot
                             ),
-                            selectedSession: selectedSession,
                             selectedProvider: shellState.selectedProvider,
                             terminalSurface: DaemonCodexTerminalSurfaceProjector.liveSurface(from: transcript),
                             gitReviewSnapshot: gitReviewSnapshot,
@@ -350,12 +352,18 @@ struct WorkbenchRootView: View {
                             claudeRuntimeStatus: claudeRuntimeStatus,
                             claudeRuntimeError: claudeRuntimeError,
                             isClaudeRuntimeLoading: isClaudeRuntimeLoading,
+                            activePlanProjection: activePlanProjection,
+                            activePlanError: activePlanError,
+                            isActivePlanLoading: isActivePlanLoading,
                             selectedTab: $inspectorTab,
                             onRefreshGitReview: {
                                 Task { await loadGitReview(selectedPath: gitReviewSelectedPath) }
                             },
                             onRefreshClaudeRuntime: {
                                 Task { await loadClaudeRuntimeStatus() }
+                            },
+                            onRefreshActivePlan: {
+                                Task { await loadActivePlanProjection() }
                             },
                             onSelectGitReviewPath: { path in
                                 Task { await loadGitReview(selectedPath: path) }
@@ -426,6 +434,7 @@ struct WorkbenchRootView: View {
             await loadGitReview(selectedPath: gitReviewSelectedPath)
             await loadClaudeRuntimeStatus()
             await loadExecutionProfileStatus()
+            await loadActivePlanProjection()
         }
         .task(id: shellState.selectedSessionID) {
             await loadTranscriptForSelection(force: true)
@@ -582,6 +591,21 @@ struct WorkbenchRootView: View {
             executionProfileStatus = nil
             executionProfileError = error.localizedDescription
             isExecutionProfileLoading = false
+        }
+    }
+
+    @MainActor
+    private func loadActivePlanProjection() async {
+        isActivePlanLoading = true
+        activePlanError = nil
+
+        do {
+            activePlanProjection = try await client.fetchActivePlanProjection()
+            isActivePlanLoading = false
+        } catch {
+            activePlanProjection = nil
+            activePlanError = error.localizedDescription
+            isActivePlanLoading = false
         }
     }
 

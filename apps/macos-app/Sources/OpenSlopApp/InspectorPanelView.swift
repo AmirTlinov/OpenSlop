@@ -17,7 +17,6 @@ enum InspectorPanelTab: String, CaseIterable, Identifiable {
 
 struct InspectorPanelView: View {
     let cards: [InspectorCardSeed]
-    let selectedSession: DaemonSessionSummary?
     let selectedProvider: String
     let terminalSurface: DaemonCodexTerminalSurface?
     let gitReviewSnapshot: DaemonGitReviewSnapshot?
@@ -26,9 +25,13 @@ struct InspectorPanelView: View {
     let claudeRuntimeStatus: DaemonClaudeRuntimeStatus?
     let claudeRuntimeError: String?
     let isClaudeRuntimeLoading: Bool
+    let activePlanProjection: DaemonActivePlanProjection?
+    let activePlanError: String?
+    let isActivePlanLoading: Bool
     @Binding var selectedTab: InspectorPanelTab
     let onRefreshGitReview: () -> Void
     let onRefreshClaudeRuntime: () -> Void
+    let onRefreshActivePlan: () -> Void
     let onSelectGitReviewPath: (String?) -> Void
     @Binding var commandExecProofMode: CommandExecProofMode
     @Binding var commandExecStdinText: String
@@ -84,46 +87,193 @@ struct InspectorPanelView: View {
     private var planPane: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "target")
-                            .foregroundStyle(.secondary)
-                        Text("Текущая работа")
-                            .font(.headline)
+                if let activePlanProjection {
+                    if activePlanProjection.isUnavailable {
+                        unavailablePlanProjection(activePlanProjection)
+                    } else {
+                        activePlanHeader(activePlanProjection)
+                        activeSliceCard(activePlanProjection.activeSlice)
+                        ForEach(visiblePlanSlices(activePlanProjection)) { slice in
+                            activePlanSliceRow(slice)
+                        }
+
+                        if activePlanProjection.slices.count > visiblePlanSlices(activePlanProjection).count {
+                            Text("Показан ближайший участок плана: \(visiblePlanSlices(activePlanProjection).count) из \(activePlanProjection.slices.count). Полная правда остаётся в ROADMAP.md.")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                                .padding(.horizontal, 12)
+                        }
+
+                        if !activePlanProjection.warnings.isEmpty {
+                            warningsCard(activePlanProjection.warnings)
+                        }
                     }
-
-                    Text(currentWorkTitle)
-                        .font(.title3.weight(.semibold))
-                        .lineLimit(2)
-
-                    Text(currentWorkDetail)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                } else if isActivePlanLoading {
+                    ProgressView("Загружаем план из core-daemon…")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
+                } else {
+                    ContentUnavailableView(
+                        "План недоступен",
+                        systemImage: "map",
+                        description: Text(activePlanError ?? "core-daemon пока не вернул active plan projection.")
+                    )
+                    .padding(.top, 10)
                 }
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 10) {
-                    planMarker("Реализация", value: selectedStatusValue, systemImage: "hammer")
-                    planMarker("Локальная проверка", value: localProofValue, systemImage: "checkmark.seal")
-                    planMarker("Ревью субагентом", value: "UNKNOWN", systemImage: "person.2")
-                    planMarker("Визуальная сверка", value: "UNKNOWN", systemImage: "rectangle.on.rectangle")
-                }
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                ContentUnavailableView(
-                    "Active plan projection ещё не подключён",
-                    systemImage: "map",
-                    description: Text("Этот экран больше не притворяется полной проверкой. Вертикальные слайсы и review markers должны прийти из daemon-owned projection в S10a/S12a.")
-                )
-                .padding(.top, 10)
             }
             .padding(16)
         }
+    }
+
+    private func unavailablePlanProjection(_ projection: DaemonActivePlanProjection) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("План не доказан", systemImage: "exclamationmark.triangle")
+                .font(.headline)
+                .foregroundStyle(.orange)
+            Text(projection.selectionReason)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            if !projection.warnings.isEmpty {
+                warningsCard(projection.warnings)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func activePlanHeader(_ projection: DaemonActivePlanProjection) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "map")
+                    .foregroundStyle(.secondary)
+                Text("Вертикальные слайсы")
+                    .font(.headline)
+                Spacer()
+                Button(action: onRefreshActivePlan) {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .disabled(isActivePlanLoading)
+                .accessibilityLabel("Обновить план")
+            }
+
+            HStack(spacing: 8) {
+                planCountChip("готово", value: projection.counts.done, tone: .green)
+                planCountChip("активно", value: projection.counts.active, tone: .blue)
+                planCountChip("план", value: projection.counts.planned, tone: .secondary)
+            }
+
+            if let activeSlice = projection.activeSlice {
+                Text("Сейчас: \(activeSlice.id)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(projection.selectionReason)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func activeSliceCard(_ slice: DaemonActivePlanSlice?) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Фокус плана")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            if let slice {
+                Text(slice.id)
+                    .font(.title3.weight(.semibold))
+                    .lineLimit(1)
+                Text(slice.outcome)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                reviewMarkerRow(slice)
+            } else {
+                Text("Все слайсы закрыты.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func activePlanSliceRow(_ slice: DaemonActivePlanSlice) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Circle()
+                .fill(statusColor(slice.status).opacity(0.22))
+                .frame(width: 10, height: 10)
+                .padding(.top, 6)
+
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(slice.id)
+                        .font(.callout.weight(.semibold))
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    statusChip(slice.status, value: slice.status)
+                }
+
+                Text(slice.outcome)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+
+                reviewMarkerRow(slice)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(slice.id == activePlanProjection?.activeSliceId ? Color.accentColor.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func visiblePlanSlices(_ projection: DaemonActivePlanProjection) -> [DaemonActivePlanSlice] {
+        guard !projection.slices.isEmpty else {
+            return []
+        }
+
+        if let activeSliceId = projection.activeSliceId,
+           let index = projection.slices.firstIndex(where: { $0.id == activeSliceId })
+        {
+            let lower = max(0, index - 3)
+            let upper = min(projection.slices.count, index + 5)
+            return Array(projection.slices[lower..<upper])
+        }
+
+        return Array(projection.slices.suffix(8))
+    }
+
+    private func reviewMarkerRow(_ slice: DaemonActivePlanSlice) -> some View {
+        HStack(spacing: 6) {
+            statusChip("proof", value: slice.proofStatus)
+            statusChip("review", value: slice.reviewStatus)
+            statusChip("visual", value: slice.visualStatus)
+        }
+        .font(.caption2.weight(.semibold))
+    }
+
+    private func warningsCard(_ warnings: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Предупреждения плана")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+            ForEach(warnings, id: \.self) { warning in
+                Text(warning)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var evidencePane: some View {
@@ -210,49 +360,35 @@ struct InspectorPanelView: View {
         }
     }
 
-    private var currentWorkTitle: String {
-        selectedSession?.title ?? "Новая задача"
+    private func planCountChip(_ title: String, value: Int, tone: Color) -> some View {
+        Text("\(value) \(title)")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(tone)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(tone.opacity(0.1), in: Capsule())
     }
 
-    private var currentWorkDetail: String {
-        let provider = cardValue("provider") ?? selectedProvider
-        let branch = cardValue("branch") ?? "—"
-        let turns = cardValue("turns") ?? "0"
-        return "\(provider) · \(branch) · \(turns) наблюдаемых ходов. Подробные доказательства лежат во вкладке «Следы»."
+    private func statusChip(_ title: String, value: String) -> some View {
+        Text(title == value ? value : "\(title) \(value)")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(statusColor(value))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(statusColor(value).opacity(0.1), in: Capsule())
     }
 
-    private var selectedStatusValue: String {
-        if let approval = cardValue("approval"), !approval.isEmpty {
-            return "NEEDS APPROVAL"
+    private func statusColor(_ status: String) -> Color {
+        switch status {
+        case "done", "pass":
+            return .green
+        case "in-progress", "in-review", "active":
+            return .blue
+        case "blocked", "block", "fail", "missing", "unknown", "pending":
+            return .orange
+        default:
+            return .secondary
         }
-        if let turns = cardValue("turns"), turns != "0" {
-            return "OBSERVED"
-        }
-        return "UNKNOWN"
-    }
-
-    private var localProofValue: String {
-        gitReviewSnapshot?.statusState.uppercased() ?? "UNKNOWN"
-    }
-
-    private func cardValue(_ id: String) -> String? {
-        cards.first(where: { $0.id == id })?.value
-    }
-
-    private func planMarker(_ title: String, value: String, systemImage: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: systemImage)
-                .foregroundStyle(.secondary)
-            Text(title)
-            Spacer()
-            Text(value)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(value == "UNKNOWN" || value == "DIRTY" ? .orange : .secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(.quaternary, in: Capsule())
-        }
-        .font(.callout)
     }
 
     private func shortValue(_ value: String) -> String {

@@ -21,6 +21,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
+use workspace_domain::load_active_plan_projection;
 
 const COMMAND_EXEC_CONTROL_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 const CLAUDE_TURN_PROOF_PROMPT: &str = "Reply with exactly OPENSLOP_CLAUDE_OK and nothing else.";
@@ -207,6 +208,14 @@ fn main() {
         return;
     }
 
+    if args.as_slice() == ["--active-plan-projection"] {
+        match active_plan_projection_json(&repo_root, true) {
+            Ok(payload) => println!("{payload}"),
+            Err(error) => exit_with_error(error),
+        }
+        return;
+    }
+
     if args.as_slice() == ["--claude-turn-proof"] {
         match claude_turn_proof_json(&repo_root, CLAUDE_TURN_PROOF_PROMPT, true) {
             Ok(payload) => println!("{payload}"),
@@ -280,7 +289,7 @@ fn main() {
     }
 
     eprintln!(
-        "OpenSlop core-daemon supports: --heartbeat | --query session-list | --start-codex-session | --git-review-snapshot | --claude-runtime-status | --execution-profile-status | --claude-turn-proof | --claude-materialize-proof-session | --claude-receipt-snapshot | --read-codex-transcript <session-id> _ | --submit-codex-turn <session-id> <input> | --serve-stdio | --reset-session-store | --upsert-proof-session | --print-session-store-path"
+        "OpenSlop core-daemon supports: --heartbeat | --query session-list | --start-codex-session | --git-review-snapshot | --claude-runtime-status | --execution-profile-status | --active-plan-projection | --claude-turn-proof | --claude-materialize-proof-session | --claude-receipt-snapshot | --read-codex-transcript <session-id> _ | --submit-codex-turn <session-id> <input> | --serve-stdio | --reset-session-store | --upsert-proof-session | --print-session-store-path"
     );
 }
 
@@ -328,14 +337,18 @@ fn execution_profile_status_json(repo_root: &Path, pretty: bool) -> Result<Strin
     serialize_payload(&status, pretty)
 }
 
+fn active_plan_projection_json(repo_root: &Path, pretty: bool) -> Result<String, String> {
+    let projection = load_active_plan_projection(repo_root);
+    serialize_payload(&projection, pretty)
+}
+
 fn build_execution_profile_status(repo_root: &Path) -> ExecutionProfileStatusResponse {
     let claude = load_claude_runtime_status(repo_root);
     let mut claude_warnings = claude.warnings.clone();
 
     let (claude_runtime_level, claude_blocking_reason) = if claude.available {
-        claude_warnings.push(
-            "Claude is receipt-only until the session lifecycle bridge lands.".to_string(),
-        );
+        claude_warnings
+            .push("Claude is receipt-only until the session lifecycle bridge lands.".to_string());
         ("receiptOnly".to_string(), None)
     } else {
         (
@@ -1290,6 +1303,10 @@ fn handle_parsed_stdio_request(request: StdioRequest, repo_root: &Path) -> Strin
             Ok(payload) => payload,
             Err(message) => serialize_error(message),
         },
+        "active-plan-projection" => match active_plan_projection_json(repo_root, false) {
+            Ok(payload) => payload,
+            Err(message) => serialize_error(message),
+        },
         "claude-turn-proof" => {
             let input_text = request
                 .input_text
@@ -1553,7 +1570,8 @@ mod tests {
     #[test]
     fn handles_execution_profile_status_request() {
         let temp = tempdir().expect("temp dir should exist");
-        let response = handle_stdio_request(r#"{"operation":"execution-profile-status"}"#, temp.path());
+        let response =
+            handle_stdio_request(r#"{"operation":"execution-profile-status"}"#, temp.path());
         let status: ExecutionProfileStatusResponse =
             serde_json::from_str(&response).expect("execution profile status should decode");
 
@@ -1570,6 +1588,22 @@ mod tests {
                 .iter()
                 .any(|profile| profile.provider == "Claude")
         );
+    }
+
+    #[test]
+    fn handles_active_plan_projection_request() {
+        let temp = tempdir().expect("temp dir should exist");
+        fs::write(
+            temp.path().join("ROADMAP.md"),
+            "| Slice | Outcome | Depends on | Status |\n| --- | --- | --- | --- |\n| `S01-demo` | Demo outcome | S00 | planned |\n",
+        )
+        .expect("roadmap should be writable");
+
+        let response =
+            handle_stdio_request(r#"{"operation":"active-plan-projection"}"#, temp.path());
+        assert!(response.contains("active_plan_projection"));
+        assert!(response.contains("S01-demo"));
+        assert!(response.contains("planned"));
     }
 
     #[test]

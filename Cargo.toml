@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "domains/session/rust/session-domain",
+    "domains/workspace/rust/workspace-domain",
     "domains/provider/rust/provider-domain",
     "domains/git/rust/git-domain",
     "services/core-daemon",

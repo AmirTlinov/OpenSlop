@@ -47,6 +47,10 @@ OpenSlop должен выглядеть как быстрый и взрослы
 
 Центральный timeline — это история работы, а не лог-дамп. User prompt, agent reply, command, file change и receipt result идут по лёгкой вертикальной линии. Основная строка говорит человеческим языком. Raw output, stdin, process id, byte counts, bridge details и receipt proof раскрываются только по запросу или живут во `Следах`.
 
+## Plan pane rule
+
+Inspector `План` показывает repo-level vertical slice projection из daemon. Он не должен выглядеть как live verify dashboard. `proof`, `review` и `visual` markers отражают slice-документы, а не runtime harness truth.
+
 ## Visual conformance
 
 GUI сверяется с референсами семантически:

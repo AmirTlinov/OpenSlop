@@ -51,6 +51,10 @@ public struct CoreDaemonClient: Sendable {
         try await SharedCoreDaemonTransport.instance.fetchExecutionProfileStatus()
     }
 
+    public func fetchActivePlanProjection() async throws -> DaemonActivePlanProjection {
+        try await SharedCoreDaemonTransport.instance.fetchActivePlanProjection()
+    }
+
     public func fetchClaudeTurnProof(inputText: String? = nil) async throws -> DaemonClaudeTurnProofResult {
         try await SharedCoreDaemonTransport.instance.fetchClaudeTurnProof(inputText: inputText)
     }
@@ -190,6 +194,11 @@ private actor CoreDaemonTransport {
     func fetchExecutionProfileStatus() throws -> DaemonExecutionProfileStatus {
         try ensureRunning()
         return try send(operation: "execution-profile-status", expecting: DaemonExecutionProfileStatus.self)
+    }
+
+    func fetchActivePlanProjection() throws -> DaemonActivePlanProjection {
+        try ensureRunning()
+        return try send(operation: "active-plan-projection", expecting: DaemonActivePlanProjection.self)
     }
 
     func fetchClaudeTurnProof(inputText: String?) throws -> DaemonClaudeTurnProofResult {

@@ -11,10 +11,13 @@
 ```text
 workspace
 ├─ AGENTS.md
-└─ docs/
-   └─ context.mmd
+├─ docs/
+│  └─ context.mmd
+└─ rust/workspace-domain/
+   └─ src/active_plan.rs
 ```
 
 Текущее состояние:
 - Материализована карта домена.
-- Код появится по owning slices, когда домен станет активным фронтом реализации.
+- `workspace-domain` держит repo-level active plan projection из `ROADMAP.md` и `plans/slices/*`.
+- Эта projection не является live verify/harness truth. Она показывает состояние slice-документов.

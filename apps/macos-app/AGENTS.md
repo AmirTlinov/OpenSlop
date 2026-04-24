@@ -22,6 +22,7 @@ macos-app
    │  ├─ GitReviewSnapshot.swift
    │  ├─ ClaudeRuntimeStatus.swift
    │  ├─ ExecutionProfileStatus.swift
+   │  ├─ ActivePlanProjection.swift
    │  ├─ ClaudeTurnProofResult.swift
    │  ├─ ClaudeProofSessionMaterialization.swift
    │  ├─ ClaudeReceiptPromptPolicy.swift
@@ -90,7 +91,9 @@ macos-app
    │  └─ main.swift
    ├─ OpenSlopClaudeReceiptSnapshotProbe/
    │  └─ main.swift
-   └─ OpenSlopExecutionProfileProbe/
+   ├─ OpenSlopExecutionProfileProbe/
+   │  └─ main.swift
+   └─ OpenSlopActivePlanProbe/
       └─ main.swift
 ```
 
@@ -102,6 +105,7 @@ S01e law:
 - Evidence surfaces можно держать в inspector, но они не должны доминировать над центральным timeline.
 - Composer capability status приходит из daemon `execution-profile-status`, а не из Swift-only догадки.
 - Timeline остаётся narrative rail. Сырые command output, PTY details и receipt proof не рендерятся как main center wall.
+- Plan pane получает `active-plan-projection` из daemon. Swift не парсит `ROADMAP.md` и не превращает docs в live verify.
 
 Текущий реальный proof target для S04 sub-slices:
 - `WorkbenchCore/CoreDaemonClient.swift` держит long-lived stdio transport к `core-daemon --serve-stdio`.

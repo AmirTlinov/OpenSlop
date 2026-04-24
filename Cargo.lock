@@ -47,6 +47,7 @@ dependencies = [
  "serde_json",
  "session-domain",
  "tempfile",
+ "workspace-domain",
 ]
 
 [[package]]
@@ -684,6 +685,14 @@ dependencies = [
  "serde_json",
  "unicode-xid",
  "wasmparser",
+]
+
+[[package]]
+name = "workspace-domain"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tempfile",
 ]
 
 [[package]]

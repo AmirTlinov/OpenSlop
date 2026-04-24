@@ -1,0 +1,13 @@
+flowchart LR
+  Roadmap[ROADMAP.md]
+  SliceDocs[plans/slices/* STATUS REVIEW VISUAL]
+  Domain[workspace-domain active plan parser]
+  Daemon[core-daemon active-plan-projection]
+  SwiftDTO[WorkbenchCore DTO]
+  Inspector[Inspector Plan pane]
+
+  Roadmap --> Domain
+  SliceDocs --> Domain
+  Domain --> Daemon
+  Daemon --> SwiftDTO
+  SwiftDTO --> Inspector

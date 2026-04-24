@@ -10,6 +10,7 @@ serde_json = "1"
 provider-domain = { path = "../../domains/provider/rust/provider-domain" }
 session-domain = { path = "../../domains/session/rust/session-domain" }
 git-domain = { path = "../../domains/git/rust/git-domain" }
+workspace-domain = { path = "../../domains/workspace/rust/workspace-domain" }
 
 [dev-dependencies]
 tempfile = "3"
