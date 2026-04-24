@@ -98,6 +98,9 @@ struct WorkbenchRootView: View {
     @State private var claudeRuntimeStatus: DaemonClaudeRuntimeStatus?
     @State private var claudeRuntimeError: String?
     @State private var isClaudeRuntimeLoading = false
+    @State private var executionProfileStatus: DaemonExecutionProfileStatus?
+    @State private var executionProfileError: String?
+    @State private var isExecutionProfileLoading = false
     @State private var isClaudeProofRunning = false
     @State private var claudeReceiptSnapshot: DaemonClaudeReceiptSnapshot?
     @State private var claudeReceiptError: String?
@@ -133,7 +136,9 @@ struct WorkbenchRootView: View {
     }
 
     private var canStartCodexSession: Bool {
-        shellState.selectedProvider == "Codex" && !isCodexBootstrapRunning
+        executionProfile(for: "Codex")?.isSubmitCapable == true
+            && shellState.selectedProvider == "Codex"
+            && !isCodexBootstrapRunning
     }
 
     private var canStartProviderSession: Bool {
@@ -141,7 +146,7 @@ struct WorkbenchRootView: View {
         case "Codex":
             return canStartCodexSession
         case "Claude":
-            return claudeRuntimeStatus?.available == true
+            return executionProfile(for: "Claude")?.isReceiptCapable == true
                 && !isClaudeProofRunning
                 && claudeReceiptPromptValidationMessage == nil
         default:
@@ -169,7 +174,8 @@ struct WorkbenchRootView: View {
         guard shellState.selectedProvider == "Codex", let selectedSession else {
             return false
         }
-        return !isTurnStreaming
+        return executionProfile(for: "Codex")?.isSubmitCapable == true
+            && !isTurnStreaming
             && looksLikeLiveCodexThread(selectedSession.id)
             && !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -181,6 +187,13 @@ struct WorkbenchRootView: View {
         default:
             return false
         }
+    }
+
+    private func executionProfile(for provider: String) -> DaemonExecutionProviderProfile? {
+        guard !isExecutionProfileLoading, executionProfileError == nil else {
+            return nil
+        }
+        return executionProfileStatus?.profile(for: provider)
     }
 
     private var commandExecCommand: [String] {
@@ -301,6 +314,9 @@ struct WorkbenchRootView: View {
                         selectedProvider: $shellState.selectedProvider,
                         selectedModel: $shellState.selectedModel,
                         selectedEffort: $shellState.selectedEffort,
+                        executionProfileStatus: executionProfileStatus,
+                        executionProfileError: executionProfileError,
+                        isExecutionProfileLoading: isExecutionProfileLoading,
                         claudeRuntimeStatus: claudeRuntimeStatus,
                         claudeRuntimeError: claudeRuntimeError,
                         isClaudeRuntimeLoading: isClaudeRuntimeLoading,
@@ -379,6 +395,9 @@ struct WorkbenchRootView: View {
                         selectedProvider: $shellState.selectedProvider,
                         selectedModel: $shellState.selectedModel,
                         selectedEffort: $shellState.selectedEffort,
+                        executionProfileStatus: executionProfileStatus,
+                        executionProfileError: executionProfileError,
+                        isExecutionProfileLoading: isExecutionProfileLoading,
                         claudeRuntimeStatus: claudeRuntimeStatus,
                         claudeRuntimeError: claudeRuntimeError,
                         isClaudeRuntimeLoading: isClaudeRuntimeLoading,
@@ -406,6 +425,7 @@ struct WorkbenchRootView: View {
             await loadSessions(force: false, preferredSessionID: nil)
             await loadGitReview(selectedPath: gitReviewSelectedPath)
             await loadClaudeRuntimeStatus()
+            await loadExecutionProfileStatus()
         }
         .task(id: shellState.selectedSessionID) {
             await loadTranscriptForSelection(force: true)
@@ -551,6 +571,21 @@ struct WorkbenchRootView: View {
     }
 
     @MainActor
+    private func loadExecutionProfileStatus() async {
+        isExecutionProfileLoading = true
+        executionProfileError = nil
+
+        do {
+            executionProfileStatus = try await client.fetchExecutionProfileStatus()
+            isExecutionProfileLoading = false
+        } catch {
+            executionProfileStatus = nil
+            executionProfileError = error.localizedDescription
+            isExecutionProfileLoading = false
+        }
+    }
+
+    @MainActor
     private func startProviderSession() async {
         switch shellState.selectedProvider {
         case "Codex":
@@ -592,8 +627,8 @@ struct WorkbenchRootView: View {
             return
         }
 
-        guard claudeRuntimeStatus?.available == true else {
-            transcriptState = .unavailable(message: "Claude runtime недоступен. Receipt session не запускается.")
+        guard executionProfile(for: "Claude")?.isReceiptCapable == true else {
+            transcriptState = .unavailable(message: "Claude capability status не разрешает receipt session. Путь закрыт fail-closed.")
             return
         }
 
@@ -963,9 +998,20 @@ struct WorkbenchRootView: View {
     }
 
     private func startCodexBlockedMessage() -> String {
+        if isExecutionProfileLoading {
+            return "Capability status ещё загружается. Start закрыт fail-closed."
+        }
+
+        if let executionProfileError {
+            return "Capability status недоступен: \(executionProfileError)"
+        }
+
         if shellState.selectedProvider == "Claude" {
             if isClaudeProofRunning {
                 return "Claude receipt proof уже выполняется."
+            }
+            if executionProfile(for: "Claude")?.isReceiptCapable != true {
+                return "Claude capability status не разрешает receipt. Путь закрыт fail-closed."
             }
             return "Claude может создать только read-only receipt session. Диалоговый режим ещё закрыт."
         }
@@ -974,12 +1020,20 @@ struct WorkbenchRootView: View {
             return "Codex session уже запускается."
         }
 
+        if executionProfile(for: "Codex")?.isSubmitCapable != true {
+            return "Codex capability status не разрешает live session. Start закрыт fail-closed."
+        }
+
         return "Codex start сейчас закрыт fail-closed: provider=\(shellState.selectedProvider)."
     }
 
     private func turnSubmitBlockedMessage(for selectedSession: DaemonSessionSummary) -> String {
         if shellState.selectedProvider == "Claude" {
             return "Claude runtime найден как status/proof boundary. Диалоговый режим закрыт до session lifecycle slice."
+        }
+
+        if executionProfile(for: "Codex")?.isSubmitCapable != true {
+            return "Codex capability status не разрешает submit. Turn закрыт fail-closed."
         }
 
         if isTurnStreaming {

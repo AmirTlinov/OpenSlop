@@ -47,6 +47,10 @@ public struct CoreDaemonClient: Sendable {
         try await SharedCoreDaemonTransport.instance.fetchClaudeRuntimeStatus()
     }
 
+    public func fetchExecutionProfileStatus() async throws -> DaemonExecutionProfileStatus {
+        try await SharedCoreDaemonTransport.instance.fetchExecutionProfileStatus()
+    }
+
     public func fetchClaudeTurnProof(inputText: String? = nil) async throws -> DaemonClaudeTurnProofResult {
         try await SharedCoreDaemonTransport.instance.fetchClaudeTurnProof(inputText: inputText)
     }
@@ -181,6 +185,11 @@ private actor CoreDaemonTransport {
     func fetchClaudeRuntimeStatus() throws -> DaemonClaudeRuntimeStatus {
         try ensureRunning()
         return try send(operation: "claude-runtime-status", expecting: DaemonClaudeRuntimeStatus.self)
+    }
+
+    func fetchExecutionProfileStatus() throws -> DaemonExecutionProfileStatus {
+        try ensureRunning()
+        return try send(operation: "execution-profile-status", expecting: DaemonExecutionProfileStatus.self)
     }
 
     func fetchClaudeTurnProof(inputText: String?) throws -> DaemonClaudeTurnProofResult {

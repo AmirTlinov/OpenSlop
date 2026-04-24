@@ -1,0 +1,11 @@
+flowchart LR
+  Daemon[core-daemon]
+  Daemon --> Projection[execution-profile-status]
+  Projection --> SwiftDTO[WorkbenchCore DTO]
+  SwiftDTO --> Composer[Composer status + model list]
+  SwiftDTO --> StartSurface[Start surface status + model list]
+  Composer --> Draft[Local draft: provider/model/effort]
+  Draft --> Submit{Submit path}
+  Submit -->|Codex live| Codex[Codex turn/session]
+  Submit -->|Claude receiptOnly| Claude[Claude receipt lane]
+  Submit -->|unavailable| Block[Fail-closed blocked status]

@@ -12,6 +12,9 @@ struct TimelinePanelView: View {
     @Binding var selectedProvider: String
     @Binding var selectedModel: String
     @Binding var selectedEffort: String
+    let executionProfileStatus: DaemonExecutionProfileStatus?
+    let executionProfileError: String?
+    let isExecutionProfileLoading: Bool
     let claudeRuntimeStatus: DaemonClaudeRuntimeStatus?
     let claudeRuntimeError: String?
     let isClaudeRuntimeLoading: Bool
@@ -30,6 +33,9 @@ struct TimelinePanelView: View {
                     selectedProvider: $selectedProvider,
                     selectedModel: $selectedModel,
                     selectedEffort: $selectedEffort,
+                    executionProfileStatus: executionProfileStatus,
+                    executionProfileError: executionProfileError,
+                    isExecutionProfileLoading: isExecutionProfileLoading,
                     claudeRuntimeStatus: claudeRuntimeStatus,
                     claudeRuntimeError: claudeRuntimeError,
                     isClaudeRuntimeLoading: isClaudeRuntimeLoading,

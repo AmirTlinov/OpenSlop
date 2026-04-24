@@ -16,6 +16,7 @@
 - read-only `claude-materialize-proof-session` operation из S05c.
 - bounded custom Claude receipt prompt validation из S05d.
 - read-only Claude receipt detail snapshot из S05e.
+- daemon-owned `execution-profile-status` projection из S01f.
 
 Текущая карта ответственности:
 - stdio transport между GUI и daemon;
@@ -36,3 +37,4 @@
 - daemon-owned Claude receipt materialization: successful proof upsert'ится в `session_list` как read-only Claude session, но submit/resume/approval/tools не открываются.
 - daemon-owned Claude prompt policy: empty и >512 bytes prompt отклоняются до запуска `claude-bridge`.
 - daemon-owned Claude receipt snapshot: latest proof детали лежат в `.openslop/state/claude-receipt-latest.json` и читаются через `claude-receipt-snapshot`; это не transcript/history.
+- daemon-owned execution profile status: Codex сейчас `live`, Claude только `receiptOnly` или `unavailable`; Swift не решает это сам.

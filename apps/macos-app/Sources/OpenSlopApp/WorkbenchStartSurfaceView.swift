@@ -8,6 +8,9 @@ struct WorkbenchStartSurfaceView: View {
     @Binding var selectedProvider: String
     @Binding var selectedModel: String
     @Binding var selectedEffort: String
+    let executionProfileStatus: DaemonExecutionProfileStatus?
+    let executionProfileError: String?
+    let isExecutionProfileLoading: Bool
     let claudeRuntimeStatus: DaemonClaudeRuntimeStatus?
     let claudeRuntimeError: String?
     let isClaudeRuntimeLoading: Bool
@@ -47,6 +50,7 @@ struct WorkbenchStartSurfaceView: View {
             }
 
             startProfileRow
+            startProfileStatusLine
 
             if selectedProvider == "Claude" {
                 claudeReceiptSurface
@@ -296,6 +300,44 @@ struct WorkbenchStartSurfaceView: View {
         .frame(maxWidth: 720, alignment: .leading)
     }
 
+    private var startProfileStatusLine: some View {
+        HStack(spacing: 8) {
+            Image(systemName: startProfileStatusIcon)
+                .foregroundStyle(startProfileStatusColor)
+            Text(startProfileStatusText)
+                .font(.caption)
+                .foregroundStyle(startProfileStatusColor)
+                .lineLimit(2)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: 720, alignment: .leading)
+    }
+
+    private var startProfileStatusText: String {
+        if isExecutionProfileLoading {
+            return "Проверяем capability для выбранного агента…"
+        }
+        if let executionProfileError, !executionProfileError.isEmpty {
+            return "Capability status недоступен: \(executionProfileError)"
+        }
+        guard let profile = executionProfileStatus?.profile(for: selectedProvider) else {
+            return "Capability status пока unknown."
+        }
+        if let blockingReason = profile.blockingReason, !blockingReason.isEmpty {
+            return blockingReason
+        }
+        let modes = profile.supportedModes.joined(separator: ", ")
+        return "\(profile.provider): \(profile.statusLabel) · modes \(modes)"
+    }
+
+    private var startProfileStatusIcon: String {
+        executionProfileStatus?.profile(for: selectedProvider)?.available == true ? "checkmark.seal" : "exclamationmark.triangle"
+    }
+
+    private var startProfileStatusColor: Color {
+        executionProfileStatus?.profile(for: selectedProvider)?.available == true ? .secondary : .orange
+    }
+
     private func startProfileMenu<Content: View>(
         title: String,
         systemImage: String,
@@ -317,6 +359,10 @@ struct WorkbenchStartSurfaceView: View {
     }
 
     private func models(for provider: String) -> [String] {
+        if let profile = executionProfileStatus?.profile(for: provider), !profile.models.isEmpty {
+            return profile.models
+        }
+
         switch provider {
         case "Claude":
             return [WorkbenchShellState.defaultModel, "claude-haiku", "claude-sonnet", "claude-opus"]

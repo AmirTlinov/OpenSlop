@@ -21,6 +21,7 @@ macos-app
    │  ├─ CodexTerminalSurface.swift
    │  ├─ GitReviewSnapshot.swift
    │  ├─ ClaudeRuntimeStatus.swift
+   │  ├─ ExecutionProfileStatus.swift
    │  ├─ ClaudeTurnProofResult.swift
    │  ├─ ClaudeProofSessionMaterialization.swift
    │  ├─ ClaudeReceiptPromptPolicy.swift
@@ -87,7 +88,9 @@ macos-app
    │  └─ main.swift
    ├─ OpenSlopClaudeCustomReceiptProbe/
    │  └─ main.swift
-   └─ OpenSlopClaudeReceiptSnapshotProbe/
+   ├─ OpenSlopClaudeReceiptSnapshotProbe/
+   │  └─ main.swift
+   └─ OpenSlopExecutionProfileProbe/
       └─ main.swift
 ```
 
@@ -97,6 +100,7 @@ S01e law:
 - Toolbar не владеет provider/model selection. Это живёт в composer/start surface.
 - Planned browser/verify/map/files не показываются как primary tabs без owning projection.
 - Evidence surfaces можно держать в inspector, но они не должны доминировать над центральным timeline.
+- Composer capability status приходит из daemon `execution-profile-status`, а не из Swift-only догадки.
 
 Текущий реальный proof target для S04 sub-slices:
 - `WorkbenchCore/CoreDaemonClient.swift` держит long-lived stdio transport к `core-daemon --serve-stdio`.
@@ -146,3 +150,5 @@ S01e law:
 - `WorkbenchCore/ClaudeProofSessionMaterialization.swift` и `OpenSlopClaudeReceiptSessionProbe` materialize S05c: Claude receipt можно создать как read-only session summary. Submit/dialog/resume для Claude остаются закрыты.
 - `WorkbenchCore/ClaudeReceiptPromptPolicy.swift` и `OpenSlopClaudeCustomReceiptProbe` materialize S05d: пользовательский bounded Claude receipt prompt проходит через daemon-owned validation и real proof, но full Claude lifecycle остаётся закрыт.
 - `WorkbenchCore/ClaudeReceiptSnapshot.swift` и `OpenSlopClaudeReceiptSnapshotProbe` materialize S05e: selected Claude receipt session читает daemon-owned latest snapshot и показывает реальные proof bounds в timeline/inspector.
+
+- `WorkbenchCore/ExecutionProfileStatus.swift` и `OpenSlopExecutionProfileProbe` materialize S01f: composer/start surface видят daemon-owned Codex live и Claude receipt-only/unavailable profile.

@@ -6,6 +6,9 @@ struct ComposerBarView: View {
     @Binding var selectedProvider: String
     @Binding var selectedModel: String
     @Binding var selectedEffort: String
+    let executionProfileStatus: DaemonExecutionProfileStatus?
+    let executionProfileError: String?
+    let isExecutionProfileLoading: Bool
     let claudeRuntimeStatus: DaemonClaudeRuntimeStatus?
     let claudeRuntimeError: String?
     let isClaudeRuntimeLoading: Bool
@@ -73,12 +76,10 @@ struct ComposerBarView: View {
                     }
                 }
 
-                if selectedProvider == "Claude" {
-                    Text(claudeComposerStatus)
-                        .font(.caption)
-                        .foregroundStyle(claudeRuntimeStatus?.available == true ? Color.secondary : Color.orange)
-                        .lineLimit(1)
-                }
+                Text(composerStatusLine)
+                    .font(.caption)
+                    .foregroundStyle(composerStatusColor)
+                    .lineLimit(1)
 
                 Spacer()
             }
@@ -115,12 +116,45 @@ struct ComposerBarView: View {
     }
 
     private func models(for provider: String) -> [String] {
+        if let profile = executionProfileStatus?.profile(for: provider), !profile.models.isEmpty {
+            return profile.models
+        }
+
         switch provider {
         case "Claude":
             return [WorkbenchShellState.defaultModel, "claude-haiku", "claude-sonnet", "claude-opus"]
         default:
             return [WorkbenchShellState.defaultModel, "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex"]
         }
+    }
+
+    private var composerStatusLine: String {
+        if isExecutionProfileLoading {
+            return "проверяем capability…"
+        }
+        if let executionProfileError, !executionProfileError.isEmpty {
+            return "capability unknown"
+        }
+        if let profile = executionProfileStatus?.profile(for: selectedProvider) {
+            if let blockingReason = profile.blockingReason, !blockingReason.isEmpty {
+                return blockingReason
+            }
+            let modes = profile.supportedModes.joined(separator: ", ")
+            return "\(profile.statusLabel) · \(modes)"
+        }
+
+        if selectedProvider == "Claude" {
+            return claudeComposerStatus
+        }
+
+        return "capability unknown"
+    }
+
+    private var composerStatusColor: Color {
+        guard let profile = executionProfileStatus?.profile(for: selectedProvider) else {
+            return .orange
+        }
+        return profile.available ? .secondary : .orange
     }
 
     private var claudeComposerStatus: String {

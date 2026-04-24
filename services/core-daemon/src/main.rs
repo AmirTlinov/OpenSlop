@@ -137,6 +137,27 @@ struct ClaudeReceiptPromptPolicySnapshot {
     bounded: bool,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExecutionProfileStatusResponse {
+    kind: String,
+    checked_at_unix_ms: u128,
+    profiles: Vec<ExecutionProviderProfileStatus>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExecutionProviderProfileStatus {
+    provider: String,
+    available: bool,
+    runtime_level: String,
+    default_model: String,
+    models: Vec<String>,
+    supported_modes: Vec<String>,
+    warnings: Vec<String>,
+    blocking_reason: Option<String>,
+}
+
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     let repo_root = repo_root();
@@ -172,6 +193,14 @@ fn main() {
 
     if args.as_slice() == ["--claude-runtime-status"] {
         match claude_runtime_status_json(&repo_root, true) {
+            Ok(payload) => println!("{payload}"),
+            Err(error) => exit_with_error(error),
+        }
+        return;
+    }
+
+    if args.as_slice() == ["--execution-profile-status"] {
+        match execution_profile_status_json(&repo_root, true) {
             Ok(payload) => println!("{payload}"),
             Err(error) => exit_with_error(error),
         }
@@ -251,7 +280,7 @@ fn main() {
     }
 
     eprintln!(
-        "OpenSlop core-daemon supports: --heartbeat | --query session-list | --start-codex-session | --git-review-snapshot | --claude-runtime-status | --claude-turn-proof | --claude-materialize-proof-session | --claude-receipt-snapshot | --read-codex-transcript <session-id> _ | --submit-codex-turn <session-id> <input> | --serve-stdio | --reset-session-store | --upsert-proof-session | --print-session-store-path"
+        "OpenSlop core-daemon supports: --heartbeat | --query session-list | --start-codex-session | --git-review-snapshot | --claude-runtime-status | --execution-profile-status | --claude-turn-proof | --claude-materialize-proof-session | --claude-receipt-snapshot | --read-codex-transcript <session-id> _ | --submit-codex-turn <session-id> <input> | --serve-stdio | --reset-session-store | --upsert-proof-session | --print-session-store-path"
     );
 }
 
@@ -292,6 +321,69 @@ fn git_review_snapshot_json(
 fn claude_runtime_status_json(repo_root: &Path, pretty: bool) -> Result<String, String> {
     let status = load_claude_runtime_status(repo_root);
     serialize_payload(&status, pretty)
+}
+
+fn execution_profile_status_json(repo_root: &Path, pretty: bool) -> Result<String, String> {
+    let status = build_execution_profile_status(repo_root);
+    serialize_payload(&status, pretty)
+}
+
+fn build_execution_profile_status(repo_root: &Path) -> ExecutionProfileStatusResponse {
+    let claude = load_claude_runtime_status(repo_root);
+    let mut claude_warnings = claude.warnings.clone();
+
+    let (claude_runtime_level, claude_blocking_reason) = if claude.available {
+        claude_warnings.push(
+            "Claude is receipt-only until the session lifecycle bridge lands.".to_string(),
+        );
+        ("receiptOnly".to_string(), None)
+    } else {
+        (
+            "unavailable".to_string(),
+            Some("Claude runtime is unavailable; receipt creation is blocked.".to_string()),
+        )
+    };
+
+    ExecutionProfileStatusResponse {
+        kind: "execution_profile_status".to_string(),
+        checked_at_unix_ms: unix_time_millis(),
+        profiles: vec![
+            ExecutionProviderProfileStatus {
+                provider: "Codex".to_string(),
+                available: true,
+                runtime_level: "live".to_string(),
+                default_model: "Auto".to_string(),
+                models: vec![
+                    "Auto".to_string(),
+                    "gpt-5.4".to_string(),
+                    "gpt-5.4-mini".to_string(),
+                    "gpt-5.3-codex".to_string(),
+                ],
+                supported_modes: vec![
+                    "general".to_string(),
+                    "code".to_string(),
+                    "review".to_string(),
+                ],
+                warnings: vec![],
+                blocking_reason: None,
+            },
+            ExecutionProviderProfileStatus {
+                provider: "Claude".to_string(),
+                available: claude.available,
+                runtime_level: claude_runtime_level,
+                default_model: "Auto".to_string(),
+                models: vec![
+                    "Auto".to_string(),
+                    "claude-haiku".to_string(),
+                    "claude-sonnet".to_string(),
+                    "claude-opus".to_string(),
+                ],
+                supported_modes: vec!["receipt".to_string()],
+                warnings: claude_warnings,
+                blocking_reason: claude_blocking_reason,
+            },
+        ],
+    }
 }
 
 fn claude_turn_proof_json(
@@ -958,6 +1050,13 @@ fn serialize_payload<T: Serialize>(payload: &T, pretty: bool) -> Result<String, 
     }
 }
 
+fn unix_time_millis() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default()
+}
+
 fn map_command_exec_result(result: CodexCommandExecResult) -> CodexCommandExecResultResponse {
     CodexCommandExecResultResponse {
         kind: "codex_command_exec_result",
@@ -1184,6 +1283,10 @@ fn handle_parsed_stdio_request(request: StdioRequest, repo_root: &Path) -> Strin
             }
         }
         "claude-runtime-status" => match claude_runtime_status_json(repo_root, false) {
+            Ok(payload) => payload,
+            Err(message) => serialize_error(message),
+        },
+        "execution-profile-status" => match execution_profile_status_json(repo_root, false) {
             Ok(payload) => payload,
             Err(message) => serialize_error(message),
         },
@@ -1445,6 +1548,28 @@ mod tests {
         let response = handle_stdio_request(r#"{"query":"session-list"}"#, temp.path());
         assert!(response.contains("session_list"));
         assert!(response.contains("s02-event-spine"));
+    }
+
+    #[test]
+    fn handles_execution_profile_status_request() {
+        let temp = tempdir().expect("temp dir should exist");
+        let response = handle_stdio_request(r#"{"operation":"execution-profile-status"}"#, temp.path());
+        let status: ExecutionProfileStatusResponse =
+            serde_json::from_str(&response).expect("execution profile status should decode");
+
+        assert_eq!(status.kind, "execution_profile_status");
+        assert!(
+            status
+                .profiles
+                .iter()
+                .any(|profile| profile.provider == "Codex" && profile.runtime_level == "live")
+        );
+        assert!(
+            status
+                .profiles
+                .iter()
+                .any(|profile| profile.provider == "Claude")
+        );
     }
 
     #[test]
