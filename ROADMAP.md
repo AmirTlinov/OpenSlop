@@ -15,7 +15,7 @@
 | `S01d-native-workbench-polish` | Native shell polish: sidebar, start surface, inspector tabs without fake runtime | S01c,S06a | done |
 | `S01e-workbench-ia-reset` | Premium IA reset: composer-owned provider/model, quiet toolbar, calm sidebar, Plan/Следы inspector | S01d,S05e | done |
 | `S01f-execution-profile-composer` | Daemon-validated execution profile draft and capability-aware submit states | S01e,S05e | done |
-| `S01g-premium-timeline` | Calm narrative timeline without proof/debug dominance | S01e | planned |
+| `S01g-premium-timeline` | Calm narrative timeline without proof/debug dominance | S01e | done |
 | `S02-event-spine` | Canonical event log, IPC, projections | S00 | done |
 | `S03-codex-runtime` | Live Codex bootstrap lane через app-server | S02 | done |
 | `S04-transcript-approval-pty` | Live turn transcript, native approvals и read-only/live terminal ceiling | S03 | done |

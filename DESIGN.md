@@ -43,6 +43,10 @@ OpenSlop должен выглядеть как быстрый и взрослы
 
 Главный экран показывает работу, а не внутреннюю кухню. Доказательства остаются доступными во `Следах`, но не доминируют над разговором. Любой visible элемент должен быть `live fact`, `local setting`, `real command` или честный `unknown`. Planned-only поверхности не занимают primary UI.
 
+## Timeline narrative rule
+
+Центральный timeline — это история работы, а не лог-дамп. User prompt, agent reply, command, file change и receipt result идут по лёгкой вертикальной линии. Основная строка говорит человеческим языком. Raw output, stdin, process id, byte counts, bridge details и receipt proof раскрываются только по запросу или живут во `Следах`.
+
 ## Visual conformance
 
 GUI сверяется с референсами семантически:

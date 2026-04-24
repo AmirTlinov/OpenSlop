@@ -1,0 +1,13 @@
+flowchart TD
+  DaemonFacts[daemon transcript / receipt facts]
+  Seed[WorkbenchSeed presentation projection]
+  Row[Timeline rail row]
+  Primary[Human primary copy]
+  Details[Collapsed proof details]
+  Evidence[Inspector Следы]
+
+  DaemonFacts --> Seed
+  Seed --> Row
+  Row --> Primary
+  Row --> Details
+  Details --> Evidence

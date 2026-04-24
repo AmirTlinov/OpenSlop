@@ -101,6 +101,7 @@ S01e law:
 - Planned browser/verify/map/files не показываются как primary tabs без owning projection.
 - Evidence surfaces можно держать в inspector, но они не должны доминировать над центральным timeline.
 - Composer capability status приходит из daemon `execution-profile-status`, а не из Swift-only догадки.
+- Timeline остаётся narrative rail. Сырые command output, PTY details и receipt proof не рендерятся как main center wall.
 
 Текущий реальный proof target для S04 sub-slices:
 - `WorkbenchCore/CoreDaemonClient.swift` держит long-lived stdio transport к `core-daemon --serve-stdio`.

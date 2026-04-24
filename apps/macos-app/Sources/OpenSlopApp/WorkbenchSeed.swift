@@ -2,6 +2,14 @@ import Foundation
 import WorkbenchCore
 
 struct TimelineItemSeed: Identifiable, Hashable {
+    enum StatusTone: String, Hashable {
+        case neutral
+        case running
+        case success
+        case attention
+        case unknown
+    }
+
     enum Kind: String {
         case user = "Вы"
         case agent = "Агент"
@@ -17,6 +25,8 @@ struct TimelineItemSeed: Identifiable, Hashable {
     let detail: String
     let secondaryDetail: String?
     let prefersMonospacedDetail: Bool
+    let statusLabel: String
+    let statusTone: StatusTone
 }
 
 struct InspectorCardSeed: Identifiable, Hashable {
@@ -43,9 +53,11 @@ struct WorkbenchSeed {
                     id: "approval-\(pendingApproval.approvalId)",
                     kind: .tool,
                     title: approvalTitle(for: pendingApproval),
-                    detail: approvalDetail(for: pendingApproval),
-                    secondaryDetail: nil,
-                    prefersMonospacedDetail: true
+                    detail: approvalHumanDetail(for: pendingApproval),
+                    secondaryDetail: approvalDetail(for: pendingApproval),
+                    prefersMonospacedDetail: false,
+                    statusLabel: "нужно внимание",
+                    statusTone: .attention
                 ),
             ] + timeline(
                 for: session,
@@ -66,7 +78,9 @@ struct WorkbenchSeed {
                     title: item.title,
                     detail: timelineDetail(for: item),
                     secondaryDetail: timelineSecondaryDetail(for: item),
-                    prefersMonospacedDetail: prefersMonospacedDetail(for: item)
+                    prefersMonospacedDetail: prefersMonospacedDetail(for: item),
+                    statusLabel: timelineStatusLabel(for: item),
+                    statusTone: timelineStatusTone(for: item)
                 )
             }
         }
@@ -82,7 +96,9 @@ struct WorkbenchSeed {
                             : "Claude receipt завершился ошибкой",
                         detail: claudeReceiptDetail(for: claudeReceiptSnapshot),
                         secondaryDetail: claudeReceiptSecondaryDetail(for: claudeReceiptSnapshot),
-                        prefersMonospacedDetail: false
+                        prefersMonospacedDetail: false,
+                        statusLabel: claudeReceiptSnapshot.proof.success ? "доказано" : "не доказано",
+                        statusTone: claudeReceiptSnapshot.proof.success ? .success : .attention
                     ),
                 ]
             }
@@ -95,7 +111,9 @@ struct WorkbenchSeed {
                         title: "Детали Claude receipt недоступны",
                         detail: claudeReceiptError,
                         secondaryDetail: "Read-only session summary still exists. Диалоговый режим остаётся закрыт.",
-                        prefersMonospacedDetail: false
+                        prefersMonospacedDetail: false,
+                        statusLabel: "unknown",
+                        statusTone: .unknown
                     ),
                 ]
             }
@@ -109,7 +127,9 @@ struct WorkbenchSeed {
                         ? "Daemon-owned receipt snapshot загружается. Это read-only latest receipt."
                         : "Claude receipt path завершился fail-closed. Диалоговый режим остаётся закрыт.",
                     secondaryDetail: "\(session.workspace) · \(session.branch) · \(session.status)",
-                    prefersMonospacedDetail: false
+                    prefersMonospacedDetail: false,
+                    statusLabel: session.status == "receipt_proven" ? "доказано" : "не доказано",
+                    statusTone: session.status == "receipt_proven" ? .success : .attention
                 ),
             ]
         }
@@ -176,6 +196,14 @@ struct WorkbenchSeed {
     }
 
     private func claudeReceiptDetail(for snapshot: DaemonClaudeReceiptSnapshot) -> String {
+        if snapshot.proof.success {
+            return "Готово. Получен реальный Claude receipt. Полный диалоговый режим пока закрыт."
+        }
+
+        return "Claude receipt не доказан. Подробности раскрываются в доказательствах."
+    }
+
+    private func claudeReceiptProofDetail(for snapshot: DaemonClaudeReceiptSnapshot) -> String {
         let proof = snapshot.proof
         let policy = snapshot.promptPolicy
         let model = proof.model ?? "model unknown"
@@ -196,6 +224,7 @@ struct WorkbenchSeed {
             "\(snapshot.session.workspace) · \(snapshot.session.branch) · \(snapshot.session.status)",
             "Bridge: \(snapshot.proof.bridge.name) \(snapshot.proof.bridge.version) via \(snapshot.proof.bridge.transport)",
             snapshot.lifecycleBoundary,
+            claudeReceiptProofDetail(for: snapshot),
         ]
 
         if !snapshot.proof.warnings.isEmpty {
@@ -236,11 +265,13 @@ struct WorkbenchSeed {
     private func timelineDetail(for item: DaemonCodexTranscriptItem) -> String {
         switch item.kind {
         case "command":
-            return item.command ?? "Команда ещё materializing."
+            return commandTimelineDetail(for: item)
         case "fileChange":
-            return item.text.isEmpty ? "Изменения файлов ещё materializing." : item.text
+            return item.text.isEmpty
+                ? "Файловые изменения ещё материализуются."
+                : "Агент подготовил изменения файлов. Список лежит в подробностях."
         default:
-            return item.text.isEmpty ? item.turnStatus : item.text
+            return item.text.isEmpty ? humanTurnStatus(item.turnStatus) : item.text
         }
     }
 
@@ -254,6 +285,10 @@ struct WorkbenchSeed {
 
             if let processId = item.processId, !processId.isEmpty {
                 meta.append("PTY \(processId)")
+            }
+
+            if let command = item.command, !command.isEmpty {
+                sections.append("command\n\(command)")
             }
 
             if let exitCode = item.exitCode {
@@ -288,17 +323,52 @@ struct WorkbenchSeed {
             }
 
             return sections.isEmpty ? nil : sections.joined(separator: "\n\n")
+        case "fileChange":
+            let output = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return output.isEmpty ? nil : output
         default:
             return nil
         }
     }
 
     private func prefersMonospacedDetail(for item: DaemonCodexTranscriptItem) -> Bool {
+        false
+    }
+
+    private func timelineStatusLabel(for item: DaemonCodexTranscriptItem) -> String {
         switch item.kind {
-        case "command", "fileChange":
-            return true
+        case "user":
+            return "запрос"
+        case "agent":
+            return item.turnStatus == "inProgress" ? "пишет" : "ответ"
+        case "command":
+            if let exitCode = item.exitCode {
+                return exitCode == 0 ? "exit 0" : "exit \(exitCode)"
+            }
+            return item.turnStatus == "inProgress" ? "в работе" : "команда"
+        case "fileChange":
+            return item.turnStatus == "inProgress" ? "в работе" : "файлы"
+        case "tool":
+            return item.turnStatus == "inProgress" ? "в работе" : "действие"
         default:
-            return false
+            return humanTurnStatus(item.turnStatus)
+        }
+    }
+
+    private func timelineStatusTone(for item: DaemonCodexTranscriptItem) -> TimelineItemSeed.StatusTone {
+        if let exitCode = item.exitCode {
+            return exitCode == 0 ? .success : .attention
+        }
+
+        switch item.turnStatus {
+        case "inProgress":
+            return .running
+        case "completed":
+            return item.kind == "command" || item.kind == "fileChange" ? .success : .neutral
+        case "failed", "declined":
+            return .attention
+        default:
+            return .unknown
         }
     }
 
@@ -331,11 +401,22 @@ struct WorkbenchSeed {
     private func approvalTitle(for approval: DaemonCodexApprovalRequest) -> String {
         switch approval.kind {
         case "commandExecution":
-            return "Approval нужен для команды"
+            return "Нужно разрешение на команду"
         case "fileChange":
-            return "Approval нужен для изменения файлов"
+            return "Нужно разрешение на файлы"
         default:
-            return "Approval нужен для действия агента"
+            return "Нужно разрешение"
+        }
+    }
+
+    private func approvalHumanDetail(for approval: DaemonCodexApprovalRequest) -> String {
+        switch approval.kind {
+        case "commandExecution":
+            return "Агент просит запустить команду. Проверь действие в системном approval-окне."
+        case "fileChange":
+            return "Агент просит изменить файлы. Проверь действие перед подтверждением."
+        default:
+            return "Агент ждёт твоего решения. Подробности раскрываются ниже."
         }
     }
 
@@ -350,5 +431,37 @@ struct WorkbenchSeed {
             return reason
         }
         return approval.itemId
+    }
+
+    private func commandTimelineDetail(for item: DaemonCodexTranscriptItem) -> String {
+        let command = item.command
+            .map { shortTimelineValue($0.replacingOccurrences(of: "\n", with: " ")) }
+            .flatMap { $0.isEmpty ? nil : $0 }
+
+        if let exitCode = item.exitCode {
+            if exitCode == 0 {
+                return command.map { "Команда завершилась успешно: \($0)" } ?? "Команда завершилась успешно."
+            }
+            return command.map { "Команда вернула exit \(exitCode): \($0)" } ?? "Команда вернула exit \(exitCode)."
+        }
+
+        if item.turnStatus == "inProgress" {
+            return command.map { "Выполняется: \($0)" } ?? "Команда выполняется."
+        }
+
+        return command.map { "Команда запрошена: \($0)" } ?? "Команда ещё материализуется."
+    }
+
+    private func humanTurnStatus(_ status: String) -> String {
+        switch status {
+        case "inProgress":
+            return "Агент работает."
+        case "completed":
+            return "Ход завершён."
+        case "failed":
+            return "Ход завершился ошибкой."
+        default:
+            return status.replacingOccurrences(of: "_", with: " ")
+        }
     }
 }
